@@ -1557,7 +1557,9 @@ describe('Counter-Strike 2', () => {
       'bots',
       'workshopMap',
       'allRounds',
-      'autoTeams',
+      'skipWarmup',
+      'noFreezeTime',
+      'instantRespawn',
       'infiniteAmmo',
       'allGrenades',
       'endlessRound',
@@ -1590,14 +1592,7 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.presetField).toBe('preset');
     expect(CS2_GAME_TYPE.liveControls?.[0]?.id).toBe('profil');
     expect(feld?.options).toEqual(profile.map((p) => p.id));
-    expect(profile.map((p) => p.id)).toEqual([
-      'none',
-      'utility',
-      'aim',
-      'retakes',
-      'scrim',
-      'showroom',
-    ]);
+    expect(profile.map((p) => p.id)).toEqual(['none', 'utility', 'aim', 'retakes', 'scrim']);
 
     for (const profil of profile) {
       for (const [key, wert] of Object.entries(profil.values)) {
@@ -1624,27 +1619,50 @@ describe('Counter-Strike 2', () => {
     });
   });
 
-  it('weist Teams mit CS2-Werten zu – mp_force_assign_teams gibt es nicht', () => {
-    expect(liveBefehle(CS2_GAME_TYPE, ['autoTeams'], { autoTeams: true })).toEqual([
-      'mp_force_pick_time 1; mp_join_grace_time 30',
+  it('führt keine Teamzuweisung mehr – Valves Teammenü (Betreiber 25.09.2026)', () => {
+    const text = JSON.stringify(CS2_GAME_TYPE);
+
+    expect(CS2_GAME_TYPE.configFields.some((f) => f.key === 'autoTeams')).toBe(false);
+    expect(text).not.toMatch(/mp_force_assign_teams|mp_force_pick_time|mp_join_grace_time/u);
+  });
+
+  it('überspringt Aufwärmphase und Standzeit, spawnt sofort – aus legt nichts fest', () => {
+    expect(
+      liveBefehle(CS2_GAME_TYPE, ['skipWarmup', 'noFreezeTime', 'instantRespawn'], {
+        skipWarmup: true,
+        noFreezeTime: true,
+        instantRespawn: true,
+      }),
+    ).toEqual([
+      'mp_warmup_online_enabled 0; mp_warmup_end',
+      'mp_freezetime 0',
+      'mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_respawnwavetime_ct 0; mp_respawnwavetime_t 0',
     ]);
-    expect(liveDatei(CS2_GAME_TYPE, { autoTeams: false })).toMatch(
-      /^mp_force_pick_time 15; mp_join_grace_time 0$/mu,
-    );
-    expect(JSON.stringify(CS2_GAME_TYPE)).not.toMatch(/mp_force_assign_teams/u);
+    // Aus: nichts festnageln – Deathmatch respawnt selbst, die Standzeit ist je
+    // Modus verschieden.
+    const aus = liveDatei(CS2_GAME_TYPE, {
+      noFreezeTime: false,
+      instantRespawn: false,
+      endlessRound: false,
+    });
+    expect(aus).not.toMatch(/mp_respawn_on_death|mp_freezetime/u);
   });
 
   it('ordnet die Steuerung in Spiel, Training und Plugins', () => {
     const gruppe = (name: string) =>
       (CS2_GAME_TYPE.liveControls ?? []).filter((s) => s.group === name).map((s) => s.id);
 
-    expect(gruppe('Spiel')).toEqual(['runden', 'teams']);
+    expect(gruppe('Spiel')).toEqual(['runden']);
+    // Paarweise für die zwei Spalten: Ablauf, Runde/Geld, Ausrüstung.
     expect(gruppe('Training')).toEqual([
-      'infiniteAmmo',
-      'allGrenades',
+      'skipWarmup',
+      'noFreezeTime',
+      'instantRespawn',
       'endlessRound',
-      'grenadeCam',
       'buyAnywhere',
+      'allGrenades',
+      'infiniteAmmo',
+      'grenadeCam',
     ]);
     expect(gruppe('Plugins')).toEqual(['plugins', 'simpleadmin', 'spielmodus-plugin']);
     // Nur MetaMod braucht einen Neustart.
@@ -1657,7 +1675,7 @@ describe('Counter-Strike 2', () => {
       'sv_cheats 1; sv_infinite_ammo 1',
     ]);
     expect(liveBefehle(CS2_GAME_TYPE, ['endlessRound'], { endlessRound: true })).toEqual([
-      'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1; mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1',
+      'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1',
       'mp_restartgame 1',
     ]);
     // Über Kartenwechsel hinweg ohne Neustart der Runde.
@@ -1797,12 +1815,14 @@ describe('Counter-Strike 2', () => {
       'workshopMap',
       'bots',
       'allRounds',
-      'autoTeams',
-      'infiniteAmmo',
-      'allGrenades',
+      'skipWarmup',
+      'noFreezeTime',
+      'instantRespawn',
       'endlessRound',
-      'grenadeCam',
       'buyAnywhere',
+      'allGrenades',
+      'infiniteAmmo',
+      'grenadeCam',
       'plugins',
       'pluginSimpleAdmin',
       'modePlugin',

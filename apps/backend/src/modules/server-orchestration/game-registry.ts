@@ -3429,6 +3429,9 @@ const CS2_KARTEN = [
  * das Spielmodus-Plugin. Nicht genannte Felder bleiben, wie sie sind.
  */
 const TRAINING_AUS = {
+  skipWarmup: false,
+  noFreezeTime: false,
+  instantRespawn: false,
   infiniteAmmo: false,
   allGrenades: false,
   endlessRound: false,
@@ -3444,19 +3447,25 @@ const CS2_PROFILE: GamePreset[] = [
     values: {},
   },
   {
+    // Behält die Kennung `utility` von v2.4.36 – gespeicherte Server zeigen
+    // sonst einen Wert, den die Auswahl nicht mehr kennt. „Waffen ansehen“
+    // (`showroom`) ist darin aufgegangen (Betreiber 25.09.2026).
     id: 'utility',
-    label: 'Utility-Training',
+    label: 'Übung / Inspect',
     description:
-      'Granaten üben: alle Granaten, unendlich Munition, Granaten-Kamera, endlose Runde, überall kaufen, keine Bots.',
+      'Üben und Waffen ansehen: keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera, keine Bots.',
     values: {
       gameMode: 'competitive',
       modePlugin: 'none',
       bots: 0,
-      infiniteAmmo: true,
-      allGrenades: true,
+      skipWarmup: true,
+      noFreezeTime: true,
+      instantRespawn: true,
       endlessRound: true,
-      grenadeCam: true,
       buyAnywhere: true,
+      allGrenades: true,
+      infiniteAmmo: true,
+      grenadeCam: true,
     },
   },
   {
@@ -3495,19 +3504,6 @@ const CS2_PROFILE: GamePreset[] = [
       bots: 0,
     },
   },
-  {
-    id: 'showroom',
-    label: 'Waffen ansehen',
-    description: 'In Ruhe kaufen und ansehen: überall kaufen, endlose Runde, keine Bots.',
-    values: {
-      ...TRAINING_AUS,
-      gameMode: 'casual',
-      modePlugin: 'none',
-      bots: 0,
-      endlessRound: true,
-      buyAnywhere: true,
-    },
-  },
 ];
 
 export const CS2_GAME_TYPE: GameTypeDefinition = {
@@ -3515,7 +3511,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.29',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.30',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3706,22 +3702,46 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    // Training (Betreiber 25.09.2026) – Schalter für Übungsserver.
     {
-      // Betreiber 25.09.2026: sonst landen Spieler beim Beitritt und nach einem
-      // Kartenwechsel als Zuschauer (Retakes wartet dann mit dem Countdown).
-      key: 'autoTeams',
-      label: 'Teams automatisch zuweisen',
+      key: 'skipWarmup',
+      label: 'Aufwärmphase überspringen',
       type: 'toggle',
-      defaultValue: true,
+      defaultValue: false,
       description:
-        'Nach einer Sekunde automatisch im Team statt 15 Sekunden Teammenü; wer bis 30 Sekunden nach Rundenstart beitritt, spielt die Runde noch mit.',
+        'Keine Aufwärmphase – die Runde läuft sofort. Ausschalten wirkt ab dem nächsten Kartenwechsel.',
       required: false,
       options: [],
       min: null,
       max: null,
       lockedAfterCreate: false,
     },
-    // Training (Betreiber 25.09.2026) – Schalter für Übungsserver.
+    {
+      key: 'noFreezeTime',
+      label: 'Keine Standzeit',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Am Rundenanfang sofort laufen und kaufen. Ausschalten wirkt ab dem nächsten Kartenwechsel.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'instantRespawn',
+      label: 'Sofort spawnen',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'T oder CT wählen und direkt drin sein, auch mitten in der Runde; nach dem Tod sofort neu. Ausschalten wirkt ab dem nächsten Kartenwechsel.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
     {
       key: 'infiniteAmmo',
       label: 'Unendlich Munition',
@@ -3752,8 +3772,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Endlos-Runde',
       type: 'toggle',
       defaultValue: false,
-      description:
-        'Rundenzeit 60 Minuten, die Runde endet nicht durch Siege. Wer stirbt oder mitten in der Runde beitritt, spawnt sofort.',
+      description: 'Rundenzeit 60 Minuten, die Runde endet nicht durch Siege.',
       required: false,
       options: [],
       min: null,
@@ -3879,7 +3898,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     bots: 'CS2_BOTS',
     workshopMap: 'CS2_WORKSHOP_MAP',
     allRounds: 'CS2_ALL_ROUNDS',
-    autoTeams: 'CS2_AUTO_TEAMS',
+    skipWarmup: 'CS2_SKIP_WARMUP',
+    noFreezeTime: 'CS2_NO_FREEZETIME',
+    instantRespawn: 'CS2_INSTANT_RESPAWN',
     infiniteAmmo: 'CS2_INFINITE_AMMO',
     allGrenades: 'CS2_ALL_GRENADES',
     endlessRound: 'CS2_ENDLESS_ROUND',
@@ -3902,7 +3923,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'bots',
     'workshopMap',
     'allRounds',
-    'autoTeams',
+    'skipWarmup',
+    'noFreezeTime',
+    'instantRespawn',
     'infiniteAmmo',
     'allGrenades',
     'endlessRound',
@@ -3985,23 +4008,6 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       },
       persist: ['{allRounds}'],
     },
-    {
-      // Wirkt ab dem nächsten Beitritt bzw. Kartenwechsel; `persist`, weil die
-      // Modus-Konfiguration beim Kartenladen `mp_force_pick_time` zurücksetzt.
-      // `mp_force_assign_teams` aus CS:GO gibt es in CS2 nicht (25.09.2026).
-      id: 'teams',
-      label: 'Teams',
-      group: 'Spiel',
-      fields: ['autoTeams'],
-      commands: ['{autoTeams}'],
-      values: {
-        autoTeams: {
-          true: 'mp_force_pick_time 1; mp_join_grace_time 30',
-          false: 'mp_force_pick_time 15; mp_join_grace_time 0',
-        },
-      },
-      persist: ['{autoTeams}'],
-    },
     /*
      * Training (Betreiber 25.09.2026). Wirkt sofort; was erst mit der nächsten
      * Runde greift (Granaten beim Spawn, Rundenzeit, Geld), startet die Runde
@@ -4010,18 +4016,84 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
      * zurück auf 0 geht es mit dem nächsten Start (`palantir.cfg`).
      */
     {
-      id: 'infiniteAmmo',
-      label: 'Unendlich Munition',
+      // `mp_warmup_end` beendet eine schon laufende; ohne `online_enabled`
+      // beginnt keine neue. Aus: Valves Vorgabe, wirkt ab dem nächsten Kartenwechsel.
+      id: 'skipWarmup',
+      label: 'Aufwärmphase überspringen',
       group: 'Training',
-      fields: ['infiniteAmmo'],
-      commands: ['{infiniteAmmo}'],
+      fields: ['skipWarmup'],
+      commands: ['{skipWarmup}'],
       values: {
-        infiniteAmmo: {
-          true: 'sv_cheats 1; sv_infinite_ammo 1',
-          false: 'sv_infinite_ammo 0',
+        skipWarmup: {
+          true: 'mp_warmup_online_enabled 0; mp_warmup_end',
+          false: 'mp_warmup_online_enabled 1',
         },
       },
-      persist: ['{infiniteAmmo}'],
+      persist: ['{skipWarmup}'],
+    },
+    {
+      // Aus setzt nichts: Die Standzeit ist je Modus verschieden (Competitive
+      // 15 s, Casual 5 s) – die Modus-Konfiguration bringt sie beim nächsten
+      // Kartenwechsel zurück. `echo`, weil auch `persist` dann nichts festnagelt.
+      id: 'noFreezeTime',
+      label: 'Keine Standzeit',
+      group: 'Training',
+      fields: ['noFreezeTime'],
+      commands: ['{noFreezeTime}'],
+      values: {
+        noFreezeTime: {
+          true: 'mp_freezetime 0',
+          false: 'echo Palantir: Standzeit des Modus gilt wieder ab dem naechsten Kartenwechsel',
+        },
+      },
+      persist: ['{noFreezeTime}'],
+    },
+    {
+      // Mit Respawn darf auch spawnen, wer nach Rundenstart ein Team wählt –
+      // sonst Zuschauer bis Rundenende. Aus setzt nichts: Deathmatch und Arms
+      // Race respawnen selbst, ein festes 0 legte sie lahm.
+      id: 'instantRespawn',
+      label: 'Sofort spawnen',
+      group: 'Training',
+      fields: ['instantRespawn'],
+      commands: ['{instantRespawn}'],
+      values: {
+        instantRespawn: {
+          true: 'mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_respawnwavetime_ct 0; mp_respawnwavetime_t 0',
+          false: 'echo Palantir: Respawn des Modus gilt wieder ab dem naechsten Kartenwechsel',
+        },
+      },
+      persist: ['{instantRespawn}'],
+    },
+    {
+      id: 'endlessRound',
+      label: 'Endlos-Runde',
+      group: 'Training',
+      fields: ['endlessRound'],
+      commands: ['{endlessRound}', 'mp_restartgame 1'],
+      values: {
+        endlessRound: {
+          true: 'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1',
+          false:
+            'mp_ignore_round_win_conditions 0; mp_roundtime 1.92; mp_roundtime_defuse 1.92; mp_roundtime_hostage 1.92',
+        },
+      },
+      persist: ['{endlessRound}'],
+    },
+    {
+      id: 'buyAnywhere',
+      label: 'Überall kaufen',
+      group: 'Training',
+      fields: ['buyAnywhere'],
+      commands: ['{buyAnywhere}', 'mp_restartgame 1'],
+      values: {
+        buyAnywhere: {
+          true: 'mp_buy_anywhere 1; mp_buytime 9999; mp_maxmoney 60000; mp_startmoney 60000; mp_afterroundmoney 60000',
+          false:
+            'mp_buy_anywhere 0; mp_buytime 20; mp_maxmoney 16000; mp_startmoney 800; mp_afterroundmoney 0',
+        },
+      },
+      persist: ['{buyAnywhere}'],
     },
     {
       id: 'allGrenades',
@@ -4038,19 +4110,18 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       persist: ['{allGrenades}'],
     },
     {
-      id: 'endlessRound',
-      label: 'Endlos-Runde',
+      id: 'infiniteAmmo',
+      label: 'Unendlich Munition',
       group: 'Training',
-      fields: ['endlessRound'],
-      commands: ['{endlessRound}', 'mp_restartgame 1'],
+      fields: ['infiniteAmmo'],
+      commands: ['{infiniteAmmo}'],
       values: {
-        endlessRound: {
-          true: 'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1; mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1',
-          false:
-            'mp_ignore_round_win_conditions 0; mp_roundtime 1.92; mp_roundtime_defuse 1.92; mp_roundtime_hostage 1.92; mp_respawn_on_death_ct 0; mp_respawn_on_death_t 0',
+        infiniteAmmo: {
+          true: 'sv_cheats 1; sv_infinite_ammo 1',
+          false: 'sv_infinite_ammo 0',
         },
       },
-      persist: ['{endlessRound}'],
+      persist: ['{infiniteAmmo}'],
     },
     {
       id: 'grenadeCam',
@@ -4065,21 +4136,6 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
         },
       },
       persist: ['{grenadeCam}'],
-    },
-    {
-      id: 'buyAnywhere',
-      label: 'Überall kaufen',
-      group: 'Training',
-      fields: ['buyAnywhere'],
-      commands: ['{buyAnywhere}', 'mp_restartgame 1'],
-      values: {
-        buyAnywhere: {
-          true: 'mp_buy_anywhere 1; mp_buytime 9999; mp_maxmoney 60000; mp_startmoney 60000; mp_afterroundmoney 60000',
-          false:
-            'mp_buy_anywhere 0; mp_buytime 20; mp_maxmoney 16000; mp_startmoney 800; mp_afterroundmoney 0',
-        },
-      },
-      persist: ['{buyAnywhere}'],
     },
     {
       /*
