@@ -1557,6 +1557,8 @@ describe('Counter-Strike 2', () => {
       'bots',
       'workshopMap',
       'allRounds',
+      'practicePack',
+      'ctOnly',
       'skipWarmup',
       'noFreezeTime',
       'instantRespawn',
@@ -1635,7 +1637,7 @@ describe('Counter-Strike 2', () => {
         instantRespawn: true,
       }),
     ).toEqual([
-      'mp_warmup_online_enabled 0; mp_warmup_end',
+      'mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 1; mp_warmuptime_all_players_connected 1; mp_warmup_end',
       'mp_freezetime 0',
       'mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_respawnwavetime_ct 0; mp_respawnwavetime_t 0',
     ]);
@@ -1664,6 +1666,22 @@ describe('Counter-Strike 2', () => {
     ).toEqual(['exec palantir_plugin_an_stealth']);
   });
 
+  it('schaltet Übungs-Einstellungen und Nur CT per Datei bzw. mp_humanteam', () => {
+    expect(
+      liveBefehle(CS2_GAME_TYPE, ['practicePack', 'ctOnly'], { practicePack: true, ctOnly: true }),
+    ).toEqual(['exec palantir_uebung_an', 'mp_humanteam ct']);
+    expect(liveDatei(CS2_GAME_TYPE, { practicePack: false, ctOnly: false })).toMatch(
+      /^exec palantir_uebung_aus$/mu,
+    );
+    // Das Übungsprofil läuft im Custom-Modus, mit Puppen-Bots und bei CT.
+    expect(CS2_GAME_TYPE.presets?.find((p) => p.id === 'utility')?.values).toMatchObject({
+      gameMode: 'custom',
+      bots: 9,
+      practicePack: true,
+      ctOnly: true,
+    });
+  });
+
   it('ordnet die Steuerung in Spiel, Training und Plugins', () => {
     const gruppe = (name: string) =>
       (CS2_GAME_TYPE.liveControls ?? []).filter((s) => s.group === name).map((s) => s.id);
@@ -1671,6 +1689,8 @@ describe('Counter-Strike 2', () => {
     expect(gruppe('Spiel')).toEqual(['runden']);
     // Paarweise für die zwei Spalten: Ablauf, Runde/Geld, Ausrüstung.
     expect(gruppe('Training')).toEqual([
+      'practicePack',
+      'ctOnly',
       'skipWarmup',
       'noFreezeTime',
       'instantRespawn',
@@ -1831,6 +1851,8 @@ describe('Counter-Strike 2', () => {
       'workshopMap',
       'bots',
       'allRounds',
+      'practicePack',
+      'ctOnly',
       'skipWarmup',
       'noFreezeTime',
       'instantRespawn',
