@@ -1642,7 +1642,7 @@ describe('Counter-Strike 2', () => {
         instantRespawn: true,
       }),
     ).toEqual([
-      'mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 0; mp_warmuptime 5; mp_warmup_end',
+      'palantir_skip_warmup 1; mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 0; mp_warmuptime 5; mp_warmup_end',
       'mp_freezetime 0',
       'mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_respawnwavetime_ct 0; mp_respawnwavetime_t 0',
     ]);
@@ -1674,13 +1674,17 @@ describe('Counter-Strike 2', () => {
   it('schaltet Übungs-Einstellungen und Nur CT per Datei bzw. mp_humanteam', () => {
     expect(
       liveBefehle(CS2_GAME_TYPE, ['practicePack', 'ctOnly'], { practicePack: true, ctOnly: true }),
-    ).toEqual(['exec palantir_uebung_an', 'mp_humanteam ct; mp_force_pick_time 1']);
+    ).toEqual([
+      'exec palantir_uebung_an',
+      'palantir_join_ct 1; mp_humanteam any; mp_force_pick_time 1',
+    ]);
     expect(liveDatei(CS2_GAME_TYPE, { practicePack: false, ctOnly: false })).toMatch(
       /^exec palantir_uebung_aus$/mu,
     );
     // Das Übungsprofil läuft im Custom-Modus, mit Puppen-Bots und bei CT.
     expect(CS2_GAME_TYPE.presets?.find((p) => p.id === 'utility')?.values).toMatchObject({
       gameMode: 'custom',
+      plugins: true,
       bots: 9,
       practicePack: true,
       ctOnly: true,
