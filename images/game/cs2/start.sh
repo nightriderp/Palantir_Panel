@@ -367,9 +367,6 @@ case "${CS2_ALL_ROUNDS:-false}" in
     ;;
 esac
 
-# **Teams automatisch zuweisen** (Betreiber 25.09.2026): `mp_force_assign_teams`.
-# Ohne landeten Spieler beim Beitritt und nach einem Kartenwechsel als
-# Zuschauer – Retakes wartete dann mit dem Countdown, bis jemand ein Team wählt.
 # **Training** (Betreiber 25.09.2026): Schalter für Übungsserver. Nur `true`
 # schaltet ein; alles andere außer `false` ist ein Fehler.
 schalter() {
@@ -388,9 +385,18 @@ ENDLOS="$(schalter 'Endlos-Runde' "${CS2_ENDLESS_ROUND:-false}")" || exit 78
 GRANATEN_KAMERA="$(schalter 'Granaten-Kamera' "${CS2_GRENADE_CAM:-false}")" || exit 78
 KAUFEN="$(schalter 'Ueberall kaufen' "${CS2_BUY_ANYWHERE:-false}")" || exit 78
 
+# **Teams automatisch zuweisen** (Betreiber 25.09.2026). CS2 kennt dafür zwei
+# Werte – `mp_force_assign_teams` aus CS:GO gibt es nicht mehr:
+# - `mp_force_pick_time`: Sekunden im Teammenü, bis das Spiel selbst zuteilt
+#   (Valve: 15).
+# - `mp_join_grace_time`: Sekunden nach Rundenstart, in denen ein Beitritt noch
+#   mitspielt (Valve: 0, höchstens 30). Später heißt: Zuschauer bis Rundenende –
+#   nach einem Karten- oder Moduswechsel ist die Runde meist schon gestartet,
+#   bis man geladen hat.
+# Ein: 1 und 30. Aus: Valves Werte.
 case "${CS2_AUTO_TEAMS:-true}" in
-  true) AUTO_TEAMS=1 ;;
-  false) AUTO_TEAMS=0 ;;
+  true) TEAM_WAHL=1; BEITRITT_FRIST=30 ;;
+  false) TEAM_WAHL=15; BEITRITT_FRIST=0 ;;
   *)
     palantir_log "Ungueltiger Wert fuer Teams automatisch: ${CS2_AUTO_TEAMS}."
     exit 78
@@ -437,7 +443,8 @@ esac
   printf 'bot_quota_mode "normal"\n'
   printf 'bot_quota %s\n' "$BOTS"
   printf 'mp_match_can_clinch %s\n' "$CLINCH"
-  printf 'mp_force_assign_teams %s\n' "$AUTO_TEAMS"
+  printf 'mp_force_pick_time %s\n' "$TEAM_WAHL"
+  printf 'mp_join_grace_time %s\n' "$BEITRITT_FRIST"
 
   # Training. Unendlich Munition und Granaten-Kamera sind in CS2
   # cheat-geschützt – ohne `sv_cheats 1` wiese der Server sie ab. Ausgeschaltetes
@@ -457,9 +464,9 @@ esac
   if [ "$ENDLOS" = 1 ]; then
     printf 'mp_roundtime 60\nmp_roundtime_defuse 60\nmp_roundtime_hostage 60\n'
     printf 'mp_ignore_round_win_conditions 1\n'
-    # Sonst bliebe, wer stirbt oder mitten in der Runde beitritt, bis zu einer
-    # Stunde tot und sähe nur die Zuschauerkamera (Betreiber 25.09.2026).
-    printf 'mp_respawn_on_death_ct 1\nmp_respawn_on_death_t 1\nmp_join_grace_time 3600\n'
+    # Sonst bliebe, wer stirbt, bis zu einer Stunde tot und sähe nur die
+    # Zuschauerkamera (Betreiber 25.09.2026).
+    printf 'mp_respawn_on_death_ct 1\nmp_respawn_on_death_t 1\n'
   fi
   if [ "$KAUFEN" = 1 ]; then
     printf 'mp_buy_anywhere 1\nmp_buytime 9999\n'

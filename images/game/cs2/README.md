@@ -39,7 +39,8 @@ vorige auf der Node läuft.
 | 11.5    | Bot-Block für alle Spielmodus-Plugins, retakes.cfg vorab, Teams automatisch           | läuft (0.0.25)   |
 | 11.6    | Training-Schalter (Munition, Granaten, Endlos-Runde, Granaten-Kamera, Überall kaufen) | läuft (0.0.26)   |
 | 11.7    | Spielmodus Custom (`game_type 3`, `game_mode 0`)                                      | läuft (0.0.27)   |
-| 11.8    | Endlos-Runde mit Respawn und Beitritt jederzeit                                       | **dieses Image** |
+| 11.8    | Endlos-Runde mit Respawn und Beitritt jederzeit                                       | läuft (0.0.28)   |
+| 11.9    | Teamzuweisung mit CS2-Werten (`mp_force_pick_time`, `mp_join_grace_time`)             | **dieses Image** |
 | 12      | Fake RCON – übersprungen (SimpleAdmin hat `css_rcon`; 1.3.2 braucht KHook)            | –                |
 | 13–15   | je ein Plugin, WeaponPaints mit MariaDB zuletzt                                       | offen            |
 
