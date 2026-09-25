@@ -37,7 +37,8 @@ vorige auf der Node läuft.
 | 11.3    | Bots aus dem Panel auch mit MatchZy/Retakes                                           | läuft (0.0.23)   |
 | 11.4    | Plugins ohne Neustart (alle bereitgelegt, `exec`-Dateien je Plugin)                   | läuft (0.0.24)   |
 | 11.5    | Bot-Block für alle Spielmodus-Plugins, retakes.cfg vorab, Teams automatisch           | läuft (0.0.25)   |
-| 11.6    | Training-Schalter (Munition, Granaten, Endlos-Runde, Granaten-Kamera, Überall kaufen) | **dieses Image** |
+| 11.6    | Training-Schalter (Munition, Granaten, Endlos-Runde, Granaten-Kamera, Überall kaufen) | läuft (0.0.26)   |
+| 11.7    | Spielmodus Custom (`game_type 3`, `game_mode 0`)                                      | **dieses Image** |
 | 12      | Fake RCON – übersprungen (SimpleAdmin hat `css_rcon`; 1.3.2 braucht KHook)            | –                |
 | 13–15   | je ein Plugin, WeaponPaints mit MariaDB zuletzt                                       | offen            |
 

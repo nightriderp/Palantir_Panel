@@ -313,6 +313,9 @@ case "${CS2_GAME_MODE:-competitive}" in
   wingman) SPIEL_TYP=0; SPIEL_MODUS=2 ;;
   armsrace) SPIEL_TYP=1; SPIEL_MODUS=0 ;;
   deathmatch) SPIEL_TYP=1; SPIEL_MODUS=2 ;;
+  # Custom (Betreiber 25.09.2026): Valves leerer Modus ohne eigene Regeln –
+  # gut für Training, weil keine Modus-Konfiguration dazwischenfunkt.
+  custom) SPIEL_TYP=3; SPIEL_MODUS=0 ;;
   *)
     palantir_log "Unbekannter Spielmodus: ${CS2_GAME_MODE}."
     exit 78
@@ -472,7 +475,7 @@ esac
 # danach sucht CS2 `gamemode_<modus>_server.cfg`, die dafür vorgesehene Stelle
 # für eigene Einstellungen; dort steht nur `exec palantir`. Für alle Modi, damit
 # kein Dateiname falsch geraten sein kann.
-for modus in competitive casual competitive2v2 deathmatch armsrace; do
+for modus in competitive casual competitive2v2 deathmatch armsrace custom; do
   printf '%s\n' '// Schreibt Palantir - fuehrt palantir.cfg nach der Modus-Konfiguration aus.' \
     'exec palantir' 'exec palantir_live' > "${CFG_ORDNER}/gamemode_${modus}_server.cfg"
 done
