@@ -601,6 +601,10 @@ export function CreateServerWizard() {
                 onChange={setConfigValue}
                 lockAfterCreate={false}
                 missingKeys={missingKeys}
+                presets={selectedGame.presets ?? []}
+                {...(selectedGame.presetField === undefined
+                  ? {}
+                  : { presetField: selectedGame.presetField })}
               />
             ) : null}
 

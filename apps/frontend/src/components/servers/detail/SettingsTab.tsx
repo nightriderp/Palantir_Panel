@@ -543,6 +543,10 @@ export function SettingsTab({
                 fields={gameType.configFields}
                 values={draft.config}
                 lockAfterCreate
+                presets={gameType.presets ?? []}
+                {...(gameType.presetField === undefined
+                  ? {}
+                  : { presetField: gameType.presetField })}
                 onChange={(key: string, value: GameConfigValue) =>
                   setDraft((current) => ({
                     ...current,

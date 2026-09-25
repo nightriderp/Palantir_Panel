@@ -1551,6 +1551,7 @@ describe('Counter-Strike 2', () => {
       'serverName',
       'serverPassword',
       'maxPlayers',
+      'preset',
       'map',
       'gameMode',
       'bots',
@@ -1579,6 +1580,48 @@ describe('Counter-Strike 2', () => {
     for (const wert of feld?.options ?? []) {
       expect(feld?.optionLabels?.[wert], wert).toBeTruthy();
     }
+  });
+
+  it('bietet Profile an – nur mit Feldern, die die Steuerung live setzen kann', () => {
+    const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === 'preset');
+    const liveFelder = new Set((CS2_GAME_TYPE.liveControls ?? []).flatMap((s) => s.fields));
+    const profile = CS2_GAME_TYPE.presets ?? [];
+
+    expect(CS2_GAME_TYPE.presetField).toBe('preset');
+    expect(CS2_GAME_TYPE.liveControls?.[0]?.id).toBe('profil');
+    expect(feld?.options).toEqual(profile.map((p) => p.id));
+    expect(profile.map((p) => p.id)).toEqual([
+      'none',
+      'utility',
+      'aim',
+      'retakes',
+      'scrim',
+      'showroom',
+    ]);
+
+    for (const profil of profile) {
+      for (const [key, wert] of Object.entries(profil.values)) {
+        const ziel = CS2_GAME_TYPE.configFields.find((f) => f.key === key);
+        expect(liveFelder.has(key), `${profil.id}.${key}`).toBe(true);
+        expect(ziel, `${profil.id}.${key}`).toBeDefined();
+        if (ziel?.type === 'select') expect(ziel.options).toContain(wert);
+        if (ziel?.type === 'toggle') expect(typeof wert).toBe('boolean');
+        if (ziel?.type === 'number') {
+          expect(wert).toBeGreaterThanOrEqual(ziel.min ?? 0);
+          expect(wert).toBeLessThanOrEqual(ziel.max ?? Number.MAX_SAFE_INTEGER);
+        }
+      }
+    }
+  });
+
+  it('gibt Profile im DTO weiter', () => {
+    const dto = toGameTypeDto(CS2_GAME_TYPE, 3);
+
+    expect(dto.presetField).toBe('preset');
+    expect(dto.presets?.find((p) => p.id === 'utility')?.values).toMatchObject({
+      infiniteAmmo: true,
+      grenadeCam: true,
+    });
   });
 
   it('ordnet die Steuerung in Spiel, Training und Plugins', () => {
@@ -1737,6 +1780,7 @@ describe('Counter-Strike 2', () => {
     const felder = CS2_GAME_TYPE.liveControls?.flatMap((steuerung) => steuerung.fields) ?? [];
 
     expect(felder).toEqual([
+      'preset',
       'map',
       'gameMode',
       'workshopMap',
