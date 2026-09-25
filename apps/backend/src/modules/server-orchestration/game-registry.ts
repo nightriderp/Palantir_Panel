@@ -3517,7 +3517,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.32',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.33',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -4085,23 +4085,29 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       persist: ['{practicePack}'],
     },
     {
-      // `mp_humanteam` setzt kein Modus – aus darf `any` festschreiben.
+      // `mp_humanteam` setzt kein Modus – aus darf `any` festschreiben;
+      // `mp_force_pick_time` setzen alle Valve-Modi auf 15 außer Custom.
+      // Ohne 1 s kam trotz Sperre 15 s das Teammenü (v2.4.41).
       id: 'ctOnly',
       label: 'Nur CT (Menschen)',
       group: 'Training',
       fields: ['ctOnly'],
       commands: ['{ctOnly}'],
       values: {
-        ctOnly: { true: 'mp_humanteam ct', false: 'mp_humanteam any' },
+        ctOnly: {
+          true: 'mp_humanteam ct; mp_force_pick_time 1',
+          false: 'mp_humanteam any; mp_force_pick_time 15',
+        },
       },
       persist: ['{ctOnly}'],
     },
     {
       // Die Aufwärmphase beginnt erst mit dem ersten Spieler – ein Befehl beim
-      // Kartenladen liefe ins Leere. Ab einem Spieler gilt der Server als voll
-      // (`mp_endwarmup_player_count 1`), dann bleibt 1 s. Live beendet
-      // `mp_warmup_end` eine laufende. `online_enabled 0` fror die Uhr bei 2:00
-      // ein (25.09.2026) und bleibt deshalb an.
+      // Kartenladen liefe ins Leere. Darum die kürzeste Zeit, die CS2 zulässt
+      // (5 s); live beendet `mp_warmup_end` eine laufende. `online_enabled 0`
+      // fror die Uhr bei 2:00 ein, „alle verbunden“ spammte den Chat (v2.4.41).
+      // Aus stellt die Aufwärmzeit nicht zurück – das tut der Modus beim
+      // nächsten Kartenwechsel; `mp_endwarmup_player_count 0` räumt v2.4.41 auf.
       id: 'skipWarmup',
       label: 'Aufwärmphase überspringen',
       group: 'Training',
@@ -4109,7 +4115,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       commands: ['{skipWarmup}'],
       values: {
         skipWarmup: {
-          true: 'mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 1; mp_warmuptime_all_players_connected 1; mp_warmup_end',
+          true: 'mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 0; mp_warmuptime 5; mp_warmup_end',
           false: 'mp_warmup_online_enabled 1; mp_endwarmup_player_count 0',
         },
       },

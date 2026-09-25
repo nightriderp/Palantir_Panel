@@ -1626,7 +1626,12 @@ describe('Counter-Strike 2', () => {
     const text = JSON.stringify(CS2_GAME_TYPE);
 
     expect(CS2_GAME_TYPE.configFields.some((f) => f.key === 'autoTeams')).toBe(false);
-    expect(text).not.toMatch(/mp_force_assign_teams|mp_force_pick_time|mp_join_grace_time/u);
+    // `mp_force_pick_time` nur noch mit „Nur CT“ (wie die Utility-Map).
+    expect(text).not.toMatch(/mp_force_assign_teams|mp_join_grace_time/u);
+    const ohneNurCt = JSON.stringify(
+      (CS2_GAME_TYPE.liveControls ?? []).filter((s) => s.id !== 'ctOnly'),
+    );
+    expect(ohneNurCt).not.toMatch(/mp_force_pick_time/u);
   });
 
   it('überspringt Aufwärmphase und Standzeit, spawnt sofort – aus legt nichts fest', () => {
@@ -1637,7 +1642,7 @@ describe('Counter-Strike 2', () => {
         instantRespawn: true,
       }),
     ).toEqual([
-      'mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 1; mp_warmuptime_all_players_connected 1; mp_warmup_end',
+      'mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 0; mp_warmuptime 5; mp_warmup_end',
       'mp_freezetime 0',
       'mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_respawnwavetime_ct 0; mp_respawnwavetime_t 0',
     ]);
@@ -1669,7 +1674,7 @@ describe('Counter-Strike 2', () => {
   it('schaltet Übungs-Einstellungen und Nur CT per Datei bzw. mp_humanteam', () => {
     expect(
       liveBefehle(CS2_GAME_TYPE, ['practicePack', 'ctOnly'], { practicePack: true, ctOnly: true }),
-    ).toEqual(['exec palantir_uebung_an', 'mp_humanteam ct']);
+    ).toEqual(['exec palantir_uebung_an', 'mp_humanteam ct; mp_force_pick_time 1']);
     expect(liveDatei(CS2_GAME_TYPE, { practicePack: false, ctOnly: false })).toMatch(
       /^exec palantir_uebung_aus$/mu,
     );
