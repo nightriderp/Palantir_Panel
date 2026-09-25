@@ -155,6 +155,16 @@ export interface GameTypeDto {
    * ohne Angabe gibt es keine Steuerung.
    */
   liveControls?: GameLiveControl[];
+  /**
+   * Profile (Vorlagen), die mehrere Felder auf einmal setzen – siehe
+   * {@link GamePreset}. Optional; ohne Angabe gibt es keine.
+   */
+  presets?: GamePreset[];
+  /**
+   * Das Auswahlfeld, das das aktive Profil trägt (bei CS2 `preset`). Wählt man
+   * darin ein Profil, übernimmt die Oberfläche dessen Werte in den Entwurf.
+   */
+  presetField?: string;
   defaultPorts: number[];
   resourceDefaults: GameResourceEstimate;
   configFields: GameConfigField[];
@@ -642,6 +652,10 @@ export interface GameTypeDefinition {
    * {@link GameLiveControl}.
    */
   readonly liveControls?: readonly GameLiveControl[];
+  /** Profile (Vorlagen) – siehe {@link GamePreset}. */
+  readonly presets?: readonly GamePreset[];
+  /** Auswahlfeld des aktiven Profils – siehe {@link GameTypeDto.presetField}. */
+  readonly presetField?: string;
   /**
    * Datei relativ zum Datenordner, in die das Backend die Zeilen
    * {@link GameLiveControl.persist} aller aktuellen Live-Werte schreibt.
@@ -697,6 +711,24 @@ export interface GameTypeDefinition {
    * Definitionen späterer Phasen sind sichtbar, aber nicht auswählbar.
    */
   readonly phase: 1 | 2 | 3;
+}
+
+/**
+ * Ein Profil (Vorlage) eines Spiels (Betreiber-Wunsch 25.09.2026), z. B. bei
+ * CS2 „Utility-Training“: setzt mehrere Einstellungen auf einmal. Was sich
+ * nicht als Feld ausdrücken lässt (`sv_cheats 1`, unendlich Munition …),
+ * bringt das Image als Konfiguration je Profil mit; das Panel wählt sie über
+ * das Feld {@link GameTypeDto.presetField} aus. Freie Konsolenbefehle nimmt ein
+ * Profil nicht an.
+ */
+export interface GamePreset {
+  /** Kennung, zugleich Wert des Auswahlfelds, z. B. `utility`. */
+  readonly id: string;
+  readonly label: string;
+  /** Ein Satz, was das Profil tut. */
+  readonly description: string;
+  /** Felder, die das Profil setzt. Nur Felder aus `configFields`. */
+  readonly values: Readonly<GameConfigValues>;
 }
 
 /**
