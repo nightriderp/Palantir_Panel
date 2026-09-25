@@ -3429,6 +3429,8 @@ const CS2_KARTEN = [
  * das Spielmodus-Plugin. Nicht genannte Felder bleiben, wie sie sind.
  */
 const TRAINING_AUS = {
+  practicePack: false,
+  ctOnly: false,
   skipWarmup: false,
   noFreezeTime: false,
   instantRespawn: false,
@@ -3453,11 +3455,15 @@ const CS2_PROFILE: GamePreset[] = [
     id: 'utility',
     label: 'Übung / Inspect',
     description:
-      'Üben und Waffen ansehen: keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera, keine Bots.',
+      'Üben und Waffen ansehen im Custom-Modus: Einstellungen wie die Workshop-Map „Dust 2 Utility“, Menschen bei CT, neun Puppen-Bots an den Spawns, keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera.',
     values: {
-      gameMode: 'competitive',
+      gameMode: 'custom',
       modePlugin: 'none',
-      bots: 0,
+      // Neun: mit dir zehn – so viele Spieler lässt die Vorgabe zu, und je
+      // fünf Spawns hat jede Seite.
+      bots: 9,
+      practicePack: true,
+      ctOnly: true,
       skipWarmup: true,
       noFreezeTime: true,
       instantRespawn: true,
@@ -3511,7 +3517,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.31',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.32',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3703,6 +3709,32 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       lockedAfterCreate: false,
     },
     // Training (Betreiber 25.09.2026) – Schalter für Übungsserver.
+    {
+      key: 'practicePack',
+      label: 'Übungs-Einstellungen',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Befehle der Workshop-Map „Dust 2 Utility“ für jede Karte: kein Zeitlimit, Leben regeneriert, kein Fallschaden, keine Ausdauer, Bunnyhop, Ping ohne Wartezeit, Flugbahn 8 s, Rüstung, Puppen-Bots (stehen still, schießen nicht). Schaltet sv_cheats ein.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'ctOnly',
+      label: 'Nur CT (Menschen)',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Spieler landen bei CT und können nicht zu T. Zum Wechseln hier ausschalten, dann im Spiel mit M.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
     {
       key: 'skipWarmup',
       label: 'Aufwärmphase überspringen',
@@ -3913,6 +3945,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     bots: 'CS2_BOTS',
     workshopMap: 'CS2_WORKSHOP_MAP',
     allRounds: 'CS2_ALL_ROUNDS',
+    practicePack: 'CS2_PRACTICE',
+    ctOnly: 'CS2_CT_ONLY',
     skipWarmup: 'CS2_SKIP_WARMUP',
     noFreezeTime: 'CS2_NO_FREEZETIME',
     instantRespawn: 'CS2_INSTANT_RESPAWN',
@@ -3939,6 +3973,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'bots',
     'workshopMap',
     'allRounds',
+    'practicePack',
+    'ctOnly',
     'skipWarmup',
     'noFreezeTime',
     'instantRespawn',
@@ -4033,8 +4069,39 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
      * zurück auf 0 geht es mit dem nächsten Start (`palantir.cfg`).
      */
     {
-      // `mp_warmup_end` beendet eine schon laufende; ohne `online_enabled`
-      // beginnt keine neue. Aus: Valves Vorgabe, wirkt ab dem nächsten Kartenwechsel.
+      // Befehle der Workshop-Map „Dust 2 Utility“ (Betreiber 25.09.2026) –
+      // stehen in `palantir_uebung_an/aus.cfg` aus dem Image.
+      id: 'practicePack',
+      label: 'Übungs-Einstellungen',
+      group: 'Training',
+      fields: ['practicePack'],
+      commands: ['{practicePack}'],
+      values: {
+        practicePack: {
+          true: 'exec palantir_uebung_an',
+          false: 'exec palantir_uebung_aus',
+        },
+      },
+      persist: ['{practicePack}'],
+    },
+    {
+      // `mp_humanteam` setzt kein Modus – aus darf `any` festschreiben.
+      id: 'ctOnly',
+      label: 'Nur CT (Menschen)',
+      group: 'Training',
+      fields: ['ctOnly'],
+      commands: ['{ctOnly}'],
+      values: {
+        ctOnly: { true: 'mp_humanteam ct', false: 'mp_humanteam any' },
+      },
+      persist: ['{ctOnly}'],
+    },
+    {
+      // Die Aufwärmphase beginnt erst mit dem ersten Spieler – ein Befehl beim
+      // Kartenladen liefe ins Leere. Ab einem Spieler gilt der Server als voll
+      // (`mp_endwarmup_player_count 1`), dann bleibt 1 s. Live beendet
+      // `mp_warmup_end` eine laufende. `online_enabled 0` fror die Uhr bei 2:00
+      // ein (25.09.2026) und bleibt deshalb an.
       id: 'skipWarmup',
       label: 'Aufwärmphase überspringen',
       group: 'Training',
@@ -4042,8 +4109,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       commands: ['{skipWarmup}'],
       values: {
         skipWarmup: {
-          true: 'mp_warmup_online_enabled 0; mp_warmup_end',
-          false: 'mp_warmup_online_enabled 1',
+          true: 'mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 1; mp_warmuptime_all_players_connected 1; mp_warmup_end',
+          false: 'mp_warmup_online_enabled 1; mp_endwarmup_player_count 0',
         },
       },
       persist: ['{skipWarmup}'],

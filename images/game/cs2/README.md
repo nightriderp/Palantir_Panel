@@ -42,7 +42,8 @@ vorige auf der Node läuft.
 | 11.8    | Endlos-Runde mit Respawn und Beitritt jederzeit                                              | läuft (0.0.28)   |
 | 11.9    | Teamzuweisung mit CS2-Werten (`mp_force_pick_time`, `mp_join_grace_time`)                    | läuft (0.0.29)   |
 | 11.10   | Übung: Aufwärmphase überspringen, keine Standzeit, sofort spawnen; Teamzuweisung wieder raus | läuft (0.0.30)   |
-| 11.11   | SimpleAdmin-Stealth-Modul eigener Schalter, Vorgabe aus („You are hidden“)                   | **dieses Image** |
+| 11.11   | SimpleAdmin-Stealth-Modul eigener Schalter, Vorgabe aus („You are hidden“)                   | läuft (0.0.31)   |
+| 11.12   | Übungs-Einstellungen (Befehle der Map „Dust 2 Utility“), Nur CT, Aufwärmphase in 1 s         | **dieses Image** |
 | 12      | Fake RCON – übersprungen (SimpleAdmin hat `css_rcon`; 1.3.2 braucht KHook)                   | –                |
 | 13–15   | je ein Plugin, WeaponPaints mit MariaDB zuletzt                                              | offen            |
 
