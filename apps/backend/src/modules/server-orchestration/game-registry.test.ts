@@ -1569,6 +1569,7 @@ describe('Counter-Strike 2', () => {
       'plugins',
       'admins',
       'pluginSimpleAdmin',
+      'pluginStealth',
       'modePlugin',
     ]);
   });
@@ -1648,6 +1649,21 @@ describe('Counter-Strike 2', () => {
     expect(aus).not.toMatch(/mp_respawn_on_death|mp_freezetime/u);
   });
 
+  it('führt das Stealth-Modul als eigenen Schalter – aus, nur mit SimpleAdmin', () => {
+    const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === 'pluginStealth');
+    const steuerung = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'stealth');
+
+    expect(feld?.defaultValue).toBe(false);
+    expect(CS2_GAME_TYPE.envMapping?.pluginStealth).toBe('CS2_PLUGIN_STEALTH');
+    expect(steuerung?.disabledWhen).toMatchObject({
+      field: 'pluginSimpleAdmin',
+      values: ['false'],
+    });
+    expect(
+      liveBefehle(CS2_GAME_TYPE, ['pluginStealth'], { plugins: true, pluginStealth: true }),
+    ).toEqual(['exec palantir_plugin_an_stealth']);
+  });
+
   it('ordnet die Steuerung in Spiel, Training und Plugins', () => {
     const gruppe = (name: string) =>
       (CS2_GAME_TYPE.liveControls ?? []).filter((s) => s.group === name).map((s) => s.id);
@@ -1664,7 +1680,7 @@ describe('Counter-Strike 2', () => {
       'infiniteAmmo',
       'grenadeCam',
     ]);
-    expect(gruppe('Plugins')).toEqual(['plugins', 'simpleadmin', 'spielmodus-plugin']);
+    expect(gruppe('Plugins')).toEqual(['plugins', 'simpleadmin', 'stealth', 'spielmodus-plugin']);
     // Nur MetaMod braucht einen Neustart.
     const plugins = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'plugins');
     expect(plugins).toMatchObject({ fields: ['plugins'], commands: [], requiresRestart: true });
@@ -1825,6 +1841,7 @@ describe('Counter-Strike 2', () => {
       'grenadeCam',
       'plugins',
       'pluginSimpleAdmin',
+      'pluginStealth',
       'modePlugin',
     ]);
 

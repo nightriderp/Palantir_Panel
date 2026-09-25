@@ -145,6 +145,11 @@ plugins_gewuenscht() {
 
   if [ "${CS2_PLUGIN_SIMPLEADMIN:-}" = true ]; then
     gewuenscht="${gewuenscht} simpleadmin anybaselib playersettings menumanager"
+
+    # Admins verstecken – nur mit SimpleAdmin, das Modul hängt an dessen API.
+    if [ "${CS2_PLUGIN_STEALTH:-}" = true ]; then
+      gewuenscht="${gewuenscht} stealth"
+    fi
   fi
 
   # Spielmodus-Plugin: eine Auswahl, nicht zwei Schalter (Fundpunkt 361) –
@@ -189,6 +194,15 @@ plugin_abhaengigkeiten() {
   esac
 }
 
+# Plugins, die an einem anderen hängen und mit ihm entladen werden müssen – das
+# Stealth-Modul braucht SimpleAdmins API.
+plugin_abhaengige() {
+  case "$1" in
+    simpleadmin) printf '%s\n' 'stealth' ;;
+    *) printf '\n' ;;
+  esac
+}
+
 plugin_befehle_schreiben() {
   p_name="$1"
   p_ordner="$2"
@@ -214,6 +228,9 @@ plugin_befehle_schreiben() {
 
   {
     echo '// Schreibt Palantir bei jedem Start - Plugin im laufenden Betrieb entladen.'
+    for p_dep in $(plugin_abhaengige "$p_name"); do
+      echo "exec palantir_plugin_aus_${p_dep}"
+    done
     p_alt_ifs="$IFS"
     IFS=','
     for p_eins in $p_ordner; do

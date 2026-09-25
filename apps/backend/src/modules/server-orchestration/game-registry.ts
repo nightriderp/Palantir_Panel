@@ -3511,7 +3511,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.30',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.31',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3863,6 +3863,21 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       lockedAfterCreate: false,
     },
     {
+      // Betreiber 25.09.2026: Das Stealth-Modul von SimpleAdmin versteckte
+      // Admins beim Beitritt (Zuschauer, kein Team). Jetzt eigener Schalter.
+      key: 'pluginStealth',
+      label: 'Admins verstecken',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Admins landen beim Beitritt unsichtbar bei den Zuschauern und fehlen in status (SimpleAdmin-Stealth). Aus: normal ins Teammenü. !hide schaltet im Spiel um.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
       /*
        * Schritte 10/11, seit 24.09.2026 eine Auswahl statt zweier Schalter
        * (Fundpunkt 361): MatchZy und Retakes steuern beide Runden und Bots und
@@ -3910,6 +3925,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     plugins: 'CS2_PLUGINS',
     admins: 'CS2_ADMINS',
     pluginSimpleAdmin: 'CS2_PLUGIN_SIMPLEADMIN',
+    pluginStealth: 'CS2_PLUGIN_STEALTH',
     modePlugin: 'CS2_MODE_PLUGIN',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
@@ -3935,6 +3951,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'plugins',
     'admins',
     'pluginSimpleAdmin',
+    'pluginStealth',
     'modePlugin',
   ],
   /*
@@ -4173,6 +4190,27 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
         },
       },
       commandsWhen: { field: 'plugins', values: ['true'] },
+    },
+    {
+      // Stealth-Modul (25.09.2026) – hängt an SimpleAdmin; dessen Aus-Datei
+      // entlädt es mit.
+      id: 'stealth',
+      label: 'Admins verstecken',
+      group: 'Plugins',
+      fields: ['pluginStealth'],
+      commands: ['{pluginStealth}'],
+      values: {
+        pluginStealth: {
+          true: 'exec palantir_plugin_an_stealth',
+          false: 'exec palantir_plugin_aus_stealth',
+        },
+      },
+      commandsWhen: { field: 'plugins', values: ['true'] },
+      disabledWhen: {
+        field: 'pluginSimpleAdmin',
+        values: ['false'],
+        hint: 'Nur mit SimpleAdmin.',
+      },
     },
     {
       /*
