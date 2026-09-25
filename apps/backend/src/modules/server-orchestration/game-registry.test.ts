@@ -1556,6 +1556,7 @@ describe('Counter-Strike 2', () => {
       'bots',
       'workshopMap',
       'allRounds',
+      'autoTeams',
       'gotv',
       'plugins',
       'admins',
@@ -1580,7 +1581,7 @@ describe('Counter-Strike 2', () => {
       .filter((s) => s.group === 'Schalter')
       .map((s) => s.id);
 
-    expect(inGruppe).toEqual(['runden', 'plugins', 'simpleadmin']);
+    expect(inGruppe).toEqual(['runden', 'teams', 'plugins', 'simpleadmin']);
     // Nur MetaMod braucht einen Neustart.
     const plugins = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'plugins');
     expect(plugins).toMatchObject({ fields: ['plugins'], commands: [], requiresRestart: true });
@@ -1717,6 +1718,7 @@ describe('Counter-Strike 2', () => {
       'workshopMap',
       'bots',
       'allRounds',
+      'autoTeams',
       'plugins',
       'pluginSimpleAdmin',
       'modePlugin',
