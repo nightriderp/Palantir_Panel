@@ -32,6 +32,7 @@
     "@fastify/multipart": "^10.1.1",
     "@fastify/websocket": "^11.3.0",
     "@node-rs/argon2": "^2.2.1",
+    "@palantir/arcade": "workspace:*",
     "@palantir/contracts": "workspace:*",
     "@palantir/validation": "workspace:*",
     "dotenv": "^16.4.7",

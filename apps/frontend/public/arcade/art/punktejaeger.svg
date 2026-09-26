@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0d2e"/>
+      <stop offset="1" stop-color="#02030c"/>
+    </linearGradient>
+    <radialGradient id="hero" cx="0.38" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#fef9c3"/>
+      <stop offset="0.55" stop-color="#facc15"/>
+      <stop offset="1" stop-color="#a16207"/>
+    </radialGradient>
+    <linearGradient id="ghostA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a5b4fc"/>
+      <stop offset="0.35" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="ghostB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fecdd3"/>
+      <stop offset="0.35" stop-color="#ff4d6d"/>
+      <stop offset="1" stop-color="#9f1239"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+  <rect width="640" height="400" fill="url(#bg)"/>
+
+  <!-- Neon-Labyrinth als Kulisse -->
+  <g fill="none" stroke="#6366f1" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 40 H 250 M 310 40 H 620 M 20 40 V 150 M 620 40 V 150 M 20 250 V 360 H 620 V 250"/>
+    <path d="M80 100 H 180 V 130 H 80 Z M 460 100 H 560 V 130 H 460 Z M 250 90 V 150 M 390 90 V 150"/>
+    <path d="M80 300 H 200 M 440 300 H 560"/>
+  </g>
+  <g fill="none" stroke="#818cf8" stroke-opacity="0.45" stroke-width="14" filter="url(#soft)">
+    <path d="M20 40 H 250 M 310 40 H 620 M 20 360 H 620"/>
+  </g>
+
+  <!-- Punktespur, die der Held gerade frisst -->
+  <g fill="#fde68a">
+    <circle cx="300" cy="210" r="6"/><circle cx="340" cy="210" r="6"/><circle cx="380" cy="210" r="6"/>
+    <circle cx="420" cy="210" r="6"/><circle cx="460" cy="210" r="6"/><circle cx="500" cy="210" r="6"/>
+  </g>
+  <g>
+    <circle cx="560" cy="210" r="22" fill="#facc15" fill-opacity="0.35" filter="url(#soft)"/>
+    <circle cx="560" cy="210" r="13" fill="#fef08a"/>
+  </g>
+
+  <!-- Held: runder Futterfreund mit Stirnband und Turnschuhen, eigene Figur -->
+  <g transform="translate(200 210)">
+    <circle r="92" fill="#facc15" fill-opacity="0.25" filter="url(#soft)"/>
+    <path d="M0 0 L 80 -38 A 88 88 0 1 0 80 38 Z" fill="url(#hero)"/>
+    <path d="M-70 -46 Q 0 -86 64 -52" fill="none" stroke="#ef4444" stroke-width="12" stroke-linecap="round"/>
+    <path d="M-72 -46 l -26 -12 m 26 12 l -22 10" stroke="#ef4444" stroke-width="7" stroke-linecap="round"/>
+    <ellipse cx="10" cy="-40" rx="13" ry="15" fill="#fff"/>
+    <circle cx="16" cy="-38" r="7" fill="#1c1917"/>
+    <circle cx="18" cy="-41" r="2.4" fill="#fff"/>
+    <path d="M52 -20 L 64 -14 L 52 -8 Z" fill="#fff"/>
+    <path d="M52 20 L 64 14 L 52 8 Z" fill="#fff"/>
+    <g>
+      <path d="M-40 82 v 18" stroke="#a16207" stroke-width="7" stroke-linecap="round"/>
+      <path d="M-58 104 q 10 -12 34 -4 l 2 8 h -38 z" fill="#f8fafc" stroke="#38bdf8" stroke-width="3"/>
+      <path d="M20 84 v 16" stroke="#a16207" stroke-width="7" stroke-linecap="round"/>
+      <path d="M4 104 q 10 -12 34 -4 l 2 8 h -38 z" fill="#f8fafc" stroke="#38bdf8" stroke-width="3"/>
+    </g>
+  </g>
+
+  <!-- Verängstigter Geist, flüchtet mit Schweißtropfen -->
+  <g transform="translate(470 110) rotate(8)">
+    <path d="M-38 40 V -2 A 38 38 0 0 1 38 -2 V 40 l -12 -10 l -13 10 l -13 -10 l -13 10 l -13 -10 z" fill="url(#ghostA)"/>
+    <circle cx="-12" cy="-6" r="5" fill="#fde68a"/><circle cx="12" cy="-6" r="5" fill="#fde68a"/>
+    <path d="M-18 16 l 6 -5 l 6 5 l 6 -5 l 6 5 l 6 -5" fill="none" stroke="#fde68a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M44 -26 q 8 12 0 16 q -8 -4 0 -16 z" fill="#7dd3fc"/>
+    <path d="M52 2 q 6 9 0 12 q -6 -3 0 -12 z" fill="#7dd3fc"/>
+    <path d="M-50 10 h -16 M -48 24 h -22 M -52 -4 h -12" stroke="#a5b4fc" stroke-width="3" stroke-linecap="round" stroke-opacity="0.7"/>
+  </g>
+
+  <!-- Zweiter Geist weiter hinten, ahnungslos -->
+  <g transform="translate(560 305) scale(0.7)">
+    <path d="M-38 40 V -2 A 38 38 0 0 1 38 -2 V 40 l -12 -10 l -13 10 l -13 -10 l -13 10 l -13 -10 z" fill="url(#ghostB)"/>
+    <ellipse cx="-12" cy="-6" rx="10" ry="12" fill="#fff"/><ellipse cx="14" cy="-6" rx="10" ry="12" fill="#fff"/>
+    <circle cx="-16" cy="-4" r="5" fill="#1e1b4b"/><circle cx="10" cy="-4" r="5" fill="#1e1b4b"/>
+    <path d="M0 -40 q -4 -18 6 -26" stroke="#ff4d6d" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <circle cx="7" cy="-68" r="6" fill="#fecdd3"/>
+  </g>
+
+  <!-- Kirschen als Bonus -->
+  <g transform="translate(90 320)">
+    <path d="M-8 4 Q 0 -30 18 -34 M 10 6 Q 12 -20 18 -34" stroke="#4ade80" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <circle cx="-10" cy="10" r="12" fill="#f43f5e"/><circle cx="12" cy="12" r="12" fill="#e11d48"/>
+    <circle cx="-14" cy="6" r="3.5" fill="#fff" fill-opacity="0.7"/><circle cx="8" cy="8" r="3.5" fill="#fff" fill-opacity="0.7"/>
+  </g>
+</svg>

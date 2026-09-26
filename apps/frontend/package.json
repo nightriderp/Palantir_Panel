@@ -13,6 +13,7 @@
     "clean": "rimraf .next .turbo"
   },
   "dependencies": {
+    "@palantir/arcade": "workspace:*",
     "@palantir/contracts": "workspace:*",
     "@palantir/validation": "workspace:*",
     "next": "^16.3.5",

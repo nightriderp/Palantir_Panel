@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e3a8a"/>
+      <stop offset="1" stop-color="#0b1026"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <radialGradient id="red" cx="0.35" cy="0.3" r="0.75">
+      <stop offset="0" stop-color="#fecaca"/>
+      <stop offset="0.45" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#991b1b"/>
+    </radialGradient>
+    <radialGradient id="yel" cx="0.35" cy="0.3" r="0.75">
+      <stop offset="0" stop-color="#fef9c3"/>
+      <stop offset="0.45" stop-color="#facc15"/>
+      <stop offset="1" stop-color="#a16207"/>
+    </radialGradient>
+    <radialGradient id="hole" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#0b1026"/>
+      <stop offset="1" stop-color="#172554"/>
+    </radialGradient>
+    <mask id="holes">
+      <rect x="150" y="110" width="340" height="280" fill="#fff"/>
+      <g fill="#000">
+        <circle cx="194" cy="150" r="17"/><circle cx="236" cy="150" r="17"/><circle cx="278" cy="150" r="17"/><circle cx="320" cy="150" r="17"/><circle cx="362" cy="150" r="17"/><circle cx="404" cy="150" r="17"/><circle cx="446" cy="150" r="17"/>
+        <circle cx="194" cy="192" r="17"/><circle cx="236" cy="192" r="17"/><circle cx="278" cy="192" r="17"/><circle cx="320" cy="192" r="17"/><circle cx="362" cy="192" r="17"/><circle cx="404" cy="192" r="17"/><circle cx="446" cy="192" r="17"/>
+        <circle cx="194" cy="234" r="17"/><circle cx="236" cy="234" r="17"/><circle cx="278" cy="234" r="17"/><circle cx="320" cy="234" r="17"/><circle cx="362" cy="234" r="17"/><circle cx="404" cy="234" r="17"/><circle cx="446" cy="234" r="17"/>
+        <circle cx="194" cy="276" r="17"/><circle cx="236" cy="276" r="17"/><circle cx="278" cy="276" r="17"/><circle cx="320" cy="276" r="17"/><circle cx="362" cy="276" r="17"/><circle cx="404" cy="276" r="17"/><circle cx="446" cy="276" r="17"/>
+        <circle cx="194" cy="318" r="17"/><circle cx="236" cy="318" r="17"/><circle cx="278" cy="318" r="17"/><circle cx="320" cy="318" r="17"/><circle cx="362" cy="318" r="17"/><circle cx="404" cy="318" r="17"/><circle cx="446" cy="318" r="17"/>
+        <circle cx="194" cy="360" r="17"/><circle cx="236" cy="360" r="17"/><circle cx="278" cy="360" r="17"/><circle cx="320" cy="360" r="17"/><circle cx="362" cy="360" r="17"/><circle cx="404" cy="360" r="17"/><circle cx="446" cy="360" r="17"/>
+      </g>
+    </mask>
+  </defs>
+  <rect width="640" height="400" fill="url(#bg)"/>
+  <g fill="#93c5fd" opacity="0.5">
+    <circle cx="60" cy="50" r="2"/><circle cx="110" cy="130" r="1.5"/><circle cx="580" cy="70" r="2"/><circle cx="530" cy="160" r="1.5"/><circle cx="600" cy="250" r="1.5"/><circle cx="40" cy="280" r="2"/>
+  </g>
+  <!-- Hintergrund der Löcher -->
+  <rect x="160" y="120" width="320" height="270" fill="url(#hole)"/>
+  <!-- Steine hinter dem Rahmen -->
+  <g>
+    <circle cx="236" cy="360" r="18" fill="url(#yel)"/><circle cx="278" cy="360" r="18" fill="url(#red)"/><circle cx="320" cy="360" r="18" fill="url(#yel)"/><circle cx="362" cy="360" r="18" fill="url(#yel)"/><circle cx="404" cy="360" r="18" fill="url(#red)"/>
+    <circle cx="320" cy="318" r="18" fill="url(#red)"/><circle cx="362" cy="318" r="18" fill="url(#red)"/><circle cx="404" cy="318" r="18" fill="url(#yel)"/><circle cx="278" cy="318" r="18" fill="url(#yel)"/>
+    <circle cx="362" cy="276" r="18" fill="url(#red)"/><circle cx="404" cy="276" r="18" fill="url(#red)"/><circle cx="320" cy="276" r="18" fill="url(#yel)"/>
+    <circle cx="446" cy="360" r="18" fill="url(#yel)"/>
+  </g>
+  <rect x="150" y="110" width="340" height="280" rx="18" fill="url(#frame)" mask="url(#holes)"/>
+  <rect x="150" y="110" width="340" height="280" rx="18" fill="none" stroke="#93c5fd" stroke-width="3" opacity="0.6"/>
+  <!-- Gewinnlinie: vier Rote diagonal -->
+  <g fill="none" stroke="#fff" stroke-width="4" opacity="0.9">
+    <circle cx="278" cy="360" r="21"/><circle cx="320" cy="318" r="21"/><circle cx="362" cy="276" r="21"/><circle cx="404" cy="234" r="21" stroke-dasharray="6 6"/>
+  </g>
+  <!-- Der vierte Stein fällt grinsend ein -->
+  <g stroke="#fecaca" stroke-width="4" stroke-linecap="round" opacity="0.7">
+    <path d="M388 40 v22"/><path d="M404 30 v26"/><path d="M420 40 v22"/>
+  </g>
+  <g transform="translate(404 92)">
+    <circle r="30" fill="url(#red)" stroke="#7f1d1d" stroke-width="3"/>
+    <circle r="20" fill="none" stroke="#fecaca" stroke-width="3" opacity="0.5"/>
+    <ellipse cx="-9" cy="-5" rx="4" ry="5.5" fill="#450a0a"/>
+    <ellipse cx="9" cy="-5" rx="4" ry="5.5" fill="#450a0a"/>
+    <path d="M-12 7 Q0 20 12 7" fill="#450a0a"/>
+  </g>
+  <path d="M404 132 v60" stroke="#fef3c7" stroke-width="4" stroke-linecap="round" stroke-dasharray="3 10"/>
+  <!-- Gelber Stein daneben, schockiert -->
+  <g transform="translate(548 330)">
+    <ellipse cx="0" cy="38" rx="34" ry="8" fill="#000" opacity="0.35"/>
+    <circle r="32" fill="url(#yel)" stroke="#a16207" stroke-width="3"/>
+    <circle cx="-10" cy="-6" r="7" fill="#fff"/><circle cx="10" cy="-6" r="7" fill="#fff"/>
+    <circle cx="-10" cy="-5" r="3" fill="#422006"/><circle cx="10" cy="-5" r="3" fill="#422006"/>
+    <ellipse cx="0" cy="13" rx="6" ry="8" fill="#422006"/>
+  </g>
+  <g fill="#fde68a">
+    <path d="M110 70 l5 12 12 5 -12 5 -5 12 -5 -12 -12 -5 12 -5 Z"/>
+    <path d="M520 110 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4 Z"/>
+  </g>
+</svg>

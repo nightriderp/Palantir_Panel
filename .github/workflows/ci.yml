@@ -202,7 +202,7 @@ jobs:
       - name: Vertragspakete bauen
         # Backend und Frontend laufen aus den Quellen (tsx, next dev), brauchen
         # aber die gebauten Workspace-Pakete.
-        run: pnpm --filter @palantir/contracts --filter @palantir/validation build
+        run: pnpm --filter @palantir/contracts --filter @palantir/validation --filter @palantir/arcade build
 
       - name: Datenbank migrieren und seeden
         run: |

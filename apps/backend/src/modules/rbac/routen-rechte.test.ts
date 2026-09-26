@@ -229,6 +229,8 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['GET /live', GRUENDE.eigenerKanal],
   ['GET /live/notifications', GRUENDE.eigenerKanal],
   ['GET /api/chat/live', GRUENDE.eigenerKanal],
+  // Spielhalle (26.09.2026): prüft Sitzung und Freischaltung beim Aufbau.
+  ['GET /arcade/live', GRUENDE.eigenerKanal],
 ]);
 
 /** Eine Route, wie der Test sie sieht. */

@@ -379,6 +379,13 @@
       "when": 1790448641414,
       "tag": "0053_kacheln_ausschaltbar",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790450090237,
+      "tag": "0054_spielhalle_neubau",
+      "breakpoints": true
     }
   ]
 }

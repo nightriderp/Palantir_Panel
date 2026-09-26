@@ -2,11 +2,10 @@
  * HTTP-Ebene des Arcade-Bereichs (Arbeitspaket F8).
  *
  * Geprüft wird, was an den Routen hängt und nicht im Dienst steht: die
- * Freischalt-Schranke (`security-matrix-06`) und die Missbrauchsgrenze je Konto
- * (Audit W2-3, `backend-community-14`). Der Punktestand ist hier bewusst
- * client-authoritativ – umso wichtiger ist, dass er nicht in Schleife
- * eintreffen kann: Jeder Aufruf ist eine Zeile in `arcade_scores` plus drei
- * Abfragen.
+ * Freischalt-Schranke (`security-matrix-06`), die Form des Rumpfs (seit dem
+ * Neubau 26.09.2026 Startwert plus Band statt eines Punktestands) und die
+ * Missbrauchsgrenze je Konto (Audit W2-3, `backend-community-14`) – jede
+ * Einsendung kostet eine Nachrechnung im Worker.
  *
  * Der Dienst ist ein Fake nach dem Muster von `quota-requests/routes.test.ts` –
  * ohne laufende Datenbank (Entwicklungsregeln §4).
@@ -45,6 +44,7 @@ const ergebnis: ArcadeSubmitResultDto = {
 
 const bestenliste: ArcadeLeaderboardDto = {
   gameId: 'kriechpfad',
+  metric: 'score',
   entries: [],
   personal: null,
   permissions: { canSubmit: true },
@@ -63,10 +63,24 @@ async function buildApp(): Promise<FastifyInstance> {
   aufrufe = [];
 
   const arcade: ArcadeService = {
-    submitScore: async () => {
-      aufrufe.push('submitScore');
+    submitRun: async () => {
+      aufrufe.push('submitRun');
 
       return ergebnis;
+    },
+    issueSeed: async () => {
+      aufrufe.push('issueSeed');
+
+      return {
+        seedId: '33333333-3333-4333-8333-000000000001',
+        seed: 7,
+        gameId: 'kriechpfad',
+        gameVersion: 1,
+        expiresAt: '2026-09-26T18:00:00.000Z',
+      };
+    },
+    recordRoomResults: async () => {
+      aufrufe.push('recordRoomResults');
     },
     getLeaderboard: async () => {
       aufrufe.push('getLeaderboard');
@@ -107,7 +121,11 @@ function absenden(instance: FastifyInstance, actor: string | null) {
     method: 'POST',
     url: '/arcade/scores',
     ...(actor === null ? {} : { headers: { 'x-test-actor': actor } }),
-    payload: { gameId: 'kriechpfad', score: 120 },
+    payload: {
+      gameId: 'kriechpfad',
+      seedId: '33333333-3333-4333-8333-000000000001',
+      replay: 'AQ==',
+    },
   });
 }
 
@@ -119,6 +137,34 @@ describe('Punktestand absenden', () => {
 
     expect(antwort.statusCode).toBe(200);
     expect(antwort.json()).toEqual({ success: true, data: ergebnis, error: null });
+  });
+
+  it('lehnt die alte Form `{ gameId, score }` ab (Breaking Change 26.09.2026)', async () => {
+    const instance = await buildApp();
+
+    const antwort = await instance.inject({
+      method: 'POST',
+      url: '/arcade/scores',
+      headers: { 'x-test-actor': 'spieler' },
+      payload: { gameId: 'kriechpfad', score: 120 },
+    });
+
+    expect(antwort.statusCode).toBe(400);
+    expect(antwort.json().error.code).toBe('VALIDATION_FAILED');
+    expect(aufrufe).toEqual([]);
+  });
+
+  it('gibt einen Startwert aus', async () => {
+    const instance = await buildApp();
+
+    const antwort = await instance.inject({
+      method: 'POST',
+      url: '/arcade/games/kriechpfad/seed',
+      headers: { 'x-test-actor': 'spieler' },
+    });
+
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json().data).toMatchObject({ seed: 7, gameId: 'kriechpfad' });
   });
 
   it('verschließt die Route für ein noch nicht freigeschaltetes Konto', async () => {

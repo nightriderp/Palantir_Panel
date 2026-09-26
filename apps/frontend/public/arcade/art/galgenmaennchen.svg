@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b0764"/>
+      <stop offset="1" stop-color="#1e0b2e"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fdf4ff"/>
+      <stop offset="0.6" stop-color="#f5d0fe"/>
+      <stop offset="1" stop-color="#e879f9" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#86198f"/>
+      <stop offset="1" stop-color="#3b0764"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fae8ff"/>
+      <stop offset="1" stop-color="#e879f9"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#sky)"/>
+  <circle cx="540" cy="80" r="70" fill="url(#moon)"/>
+  <g fill="#f5d0fe">
+    <circle cx="60" cy="50" r="2"/>
+    <circle cx="140" cy="90" r="3"/>
+    <circle cx="420" cy="40" r="2"/>
+    <circle cx="610" cy="200" r="2"/>
+    <circle cx="330" cy="110" r="2.5"/>
+  </g>
+  <path d="M0 330 Q160 280 320 320 T640 310 V400 H0 Z" fill="url(#hill)"/>
+  <!-- Gestell aus Holz -->
+  <g stroke="#fbcfe8" stroke-width="12" stroke-linecap="round" fill="none">
+    <path d="M140 320 V70 H310"/>
+    <path d="M140 130 L200 70"/>
+  </g>
+  <path d="M290 70 V120" stroke="#fde68a" stroke-width="4"/>
+  <!-- Männchen hält sich lässig am Seil fest und winkt -->
+  <g stroke="#fdf4ff" stroke-width="7" stroke-linecap="round" fill="none">
+    <path d="M290 172 V245"/>
+    <path d="M290 188 L262 140 L284 118"/>
+    <path d="M290 188 L336 162"/>
+    <path d="M290 245 L268 290 M290 245 L318 282"/>
+  </g>
+  <path d="M336 162 l6 -16 M336 162 l16 -8" stroke="#fdf4ff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="290" cy="150" r="22" fill="#fdf4ff"/>
+  <circle cx="282" cy="146" r="3.5" fill="#3b0764"/>
+  <circle cx="299" cy="146" r="3.5" fill="#3b0764"/>
+  <path d="M280 157 Q290 168 301 157" stroke="#3b0764" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <!-- Vogel auf dem Balken -->
+  <g>
+    <ellipse cx="220" cy="58" rx="16" ry="11" fill="#fbbf24"/>
+    <circle cx="234" cy="50" r="8" fill="#fbbf24"/>
+    <path d="M241 50 l10 3 l-10 3 z" fill="#f97316"/>
+    <circle cx="236" cy="48" r="2" fill="#1f2937"/>
+    <path d="M206 56 l-10 -6 l2 10 z" fill="#f59e0b"/>
+  </g>
+  <!-- Buchstabenfeld: verdeckte Kacheln und Striche -->
+  <g>
+    <rect x="370" y="220" width="46" height="56" rx="8" fill="url(#tile)"/>
+    <rect x="426" y="220" width="46" height="56" rx="8" fill="url(#tile)" opacity="0.35"/>
+    <rect x="482" y="220" width="46" height="56" rx="8" fill="url(#tile)"/>
+    <rect x="538" y="220" width="46" height="56" rx="8" fill="url(#tile)" opacity="0.35"/>
+    <g fill="#86198f">
+      <circle cx="393" cy="248" r="9"/>
+      <path d="M496 236 h18 v24 h-18 z" opacity="0.9"/>
+    </g>
+    <g stroke="#f5d0fe" stroke-width="5" stroke-linecap="round">
+      <path d="M375 292 h36 M431 292 h36 M487 292 h36 M543 292 h36"/>
+    </g>
+    <!-- großes Fragezeichen als Form, nicht als Schrift -->
+    <path d="M440 150 q0 -30 30 -30 q30 0 30 26 q0 18 -22 26 v14" stroke="#f0abfc" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <circle cx="478" cy="208" r="7" fill="#f0abfc"/>
+  </g>
+</svg>

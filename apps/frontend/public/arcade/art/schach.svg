@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0b1120"/>
+    </linearGradient>
+    <radialGradient id="spot" cx="0.5" cy="0.35" r="0.6">
+      <stop offset="0" stop-color="#e2e8f0" stop-opacity="0.2"/>
+    </radialGradient>
+    <linearGradient id="ivory" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="ebony" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#94a3b8"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#bg)"/>
+  <rect width="640" height="400" fill="url(#spot)"/>
+  <g fill="#e2e8f0" opacity="0.5">
+    <circle cx="70" cy="60" r="2"/><circle cx="150" cy="30" r="1.5"/><circle cx="560" cy="50" r="2"/>
+    <circle cx="600" cy="120" r="1.5"/><circle cx="40" cy="150" r="1.5"/><circle cx="500" cy="24" r="1.2"/>
+  </g>
+  <!-- Brett in Schräglage -->
+  <g transform="translate(320 300)">
+    <path d="M-300 90 L-190 -20 L190 -20 L300 90 Z" fill="url(#floor)"/>
+    <g fill="#1e293b" opacity="0.75">
+      <path d="M-190 -20 L-142 -20 L-163 8 L-218 8 Z"/>
+      <path d="M-95 -20 L-48 -20 L-54 8 L-109 8 Z"/>
+      <path d="M0 -20 L48 -20 L54 8 L0 8 Z"/>
+      <path d="M95 -20 L142 -20 L163 8 L109 8 Z"/>
+      <path d="M-163 8 L-109 8 L-122 35 L-184 35 Z"/>
+      <path d="M-54 8 L0 8 L0 35 L-61 35 Z"/>
+      <path d="M54 8 L109 8 L122 35 L61 35 Z"/>
+      <path d="M163 8 L218 8 L245 35 L184 35 Z"/>
+      <path d="M-245 35 L-184 35 L-204 62 L-272 62 Z"/>
+      <path d="M-122 35 L-61 35 L-68 62 L-136 62 Z"/>
+      <path d="M0 35 L61 35 L68 62 L0 62 Z"/>
+      <path d="M122 35 L184 35 L204 62 L136 62 Z"/>
+      <path d="M-204 62 L-136 62 L-150 90 L-225 90 Z"/>
+      <path d="M-68 62 L0 62 L0 90 L-75 90 Z"/>
+      <path d="M68 62 L136 62 L150 90 L75 90 Z"/>
+      <path d="M204 62 L272 62 L300 90 L225 90 Z"/>
+    </g>
+  </g>
+  <!-- Schatten -->
+  <ellipse cx="230" cy="318" rx="70" ry="12" fill="#000" opacity="0.35"/>
+  <ellipse cx="430" cy="318" rx="74" ry="12" fill="#000" opacity="0.35"/>
+  <!-- Weißer König, leicht nervös -->
+  <g stroke="#1e293b" stroke-width="5" stroke-linejoin="round">
+    <rect x="165" y="290" width="130" height="26" rx="10" fill="url(#ivory)"/>
+    <path d="M185 292 C195 240 205 210 205 190 L255 190 C255 210 265 240 275 292 Z" fill="url(#ivory)"/>
+    <path d="M178 196 C160 150 185 112 212 124 C218 110 224 104 230 104 C236 104 242 110 248 124 C275 112 300 150 282 196 Z" fill="url(#ivory)"/>
+    <rect x="222" y="54" width="16" height="54" rx="4" fill="url(#ivory)"/>
+    <rect x="204" y="68" width="52" height="16" rx="4" fill="url(#ivory)"/>
+  </g>
+  <g fill="#1e293b">
+    <ellipse cx="214" cy="160" rx="7" ry="9"/>
+    <ellipse cx="246" cy="160" rx="7" ry="9"/>
+  </g>
+  <g fill="#fff"><circle cx="216" cy="157" r="2.5"/><circle cx="248" cy="157" r="2.5"/></g>
+  <path d="M216 182 Q230 174 244 182" fill="none" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+  <path d="M292 132 C298 142 300 150 294 155 C288 150 288 142 292 132 Z" fill="#7dd3fc" stroke="#0ea5e9" stroke-width="2"/>
+  <!-- Schwarzer Springer mit breitem Grinsen -->
+  <g stroke="#e2e8f0" stroke-width="5" stroke-linejoin="round">
+    <rect x="362" y="290" width="136" height="26" rx="10" fill="url(#ebony)"/>
+    <path d="M378 292 C378 250 398 230 414 208 C398 214 376 220 362 208 C350 196 360 178 378 168 C396 150 406 128 420 114 L424 88 L440 108 C476 118 498 156 490 206 C484 240 478 266 480 292 Z" fill="url(#ebony)"/>
+    <path d="M452 116 C470 136 476 170 466 204" fill="none"/>
+  </g>
+  <circle cx="412" cy="150" r="8" fill="#e2e8f0"/>
+  <circle cx="409" cy="148" r="3.5" fill="#0f172a"/>
+  <path d="M398 144 L424 136" stroke="#e2e8f0" stroke-width="4" stroke-linecap="round"/>
+  <path d="M366 194 Q382 206 400 196" fill="none" stroke="#e2e8f0" stroke-width="4" stroke-linecap="round"/>
+  <!-- Zugpfeil im L -->
+  <path d="M470 70 L540 70 L540 150" fill="none" stroke="#fbbf24" stroke-width="6" stroke-linecap="round" stroke-dasharray="4 14"/>
+  <path d="M528 142 L540 162 L552 142 Z" fill="#fbbf24"/>
+</svg>

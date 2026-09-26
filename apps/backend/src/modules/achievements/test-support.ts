@@ -144,12 +144,10 @@ export function fakeAchievementRepository(options: FakeOptions = {}): FakeAchiev
       );
     },
 
-    arcadeDistinctGames(): Promise<number> {
+    arcadeDistinctGames(_userId: string, gameIds: readonly ArcadeGameId[]): Promise<number> {
       zaehle('arcadeDistinctGames');
 
-      return Promise.resolve(
-        Object.values(arcadeRounds).filter((anzahl) => (anzahl ?? 0) > 0).length,
-      );
+      return Promise.resolve(gameIds.filter((gameId) => (arcadeRounds[gameId] ?? 0) > 0).length);
     },
 
     bestArcadeRank(): Promise<number | null> {

@@ -1,0 +1,161 @@
+import { type Section, type Track } from '../types';
+
+/**
+ * „Schlossallee-Shuffle" – ein hüpfender Ragtime in C-Dur. Der Bass läuft als
+ * Oom-pah im Viertel, die Melodie springt in Achteln darüber; so klingt es
+ * nach Geldzählen und Würfelklappern, ohne bei langen Partien zu nerven.
+ */
+
+// Melodie A: das Thema, aufsteigender Dreiklang und zurück.
+const A: Section = [
+  [72, 2],
+  [76, 2],
+  [79, 2],
+  [76, 2],
+  [72, 2],
+  [74, 2],
+  [76, 4],
+  [77, 2],
+  [76, 2],
+  [74, 2],
+  [72, 2],
+  [71, 4],
+  [67, 4],
+  [69, 2],
+  [72, 2],
+  [76, 2],
+  [74, 2],
+  [72, 2],
+  [69, 2],
+  [67, 4],
+  [65, 2],
+  [69, 2],
+  [72, 2],
+  [71, 2],
+  [72, 6],
+  [null, 2],
+];
+
+// Melodie B: punktierte Antwort über der Subdominante.
+const B: Section = [
+  [74, 3],
+  [74, 1],
+  [76, 2],
+  [77, 2],
+  [79, 4],
+  [77, 4],
+  [76, 2],
+  [74, 2],
+  [72, 2],
+  [74, 2],
+  [76, 8],
+  [77, 3],
+  [77, 1],
+  [79, 2],
+  [81, 2],
+  [79, 4],
+  [76, 4],
+  [74, 2],
+  [76, 2],
+  [74, 2],
+  [71, 2],
+  [67, 8],
+];
+
+// Melodie C: chromatische Zwischenspiel-Schlenker, dann zurück zum Grundton.
+const C: Section = [
+  [79, 2],
+  [78, 2],
+  [79, 2],
+  [84, 2],
+  [79, 2],
+  [76, 2],
+  [72, 4],
+  [74, 2],
+  [73, 2],
+  [74, 2],
+  [79, 2],
+  [77, 2],
+  [74, 2],
+  [71, 4],
+  [72, 2],
+  [76, 2],
+  [79, 2],
+  [84, 2],
+  [83, 2],
+  [81, 2],
+  [79, 2],
+  [77, 2],
+  [76, 2],
+  [74, 2],
+  [72, 2],
+  [71, 2],
+  [72, 4],
+  [null, 4],
+];
+
+const BASS_A: Section = [
+  [48, 4],
+  [55, 4],
+  [48, 4],
+  [55, 4],
+  [43, 4],
+  [50, 4],
+  [43, 4],
+  [50, 4],
+  [45, 4],
+  [52, 4],
+  [41, 4],
+  [48, 4],
+  [43, 4],
+  [50, 4],
+  [48, 8],
+];
+
+const BASS_B: Section = [
+  [41, 4],
+  [48, 4],
+  [41, 4],
+  [48, 4],
+  [48, 4],
+  [55, 4],
+  [48, 4],
+  [55, 4],
+  [41, 4],
+  [48, 4],
+  [45, 4],
+  [48, 4],
+  [43, 4],
+  [50, 4],
+  [43, 4],
+  [47, 4],
+];
+
+const BASS_C: Section = [
+  [48, 4],
+  [52, 4],
+  [55, 4],
+  [52, 4],
+  [43, 4],
+  [47, 4],
+  [50, 4],
+  [47, 4],
+  [48, 4],
+  [52, 4],
+  [53, 4],
+  [54, 4],
+  [55, 4],
+  [43, 4],
+  [48, 8],
+];
+
+export const track: Track = {
+  title: 'Schlossallee-Shuffle',
+  bpm: 132,
+  wave: 'square',
+  bassWave: 'triangle',
+  melody: [A, B, A, C],
+  bass: [BASS_A, BASS_B, BASS_A, BASS_C],
+  drums: ['k...h.s.k.h.s.h.', 'k.h.s...k.k.s.hh'],
+  gain: 0.8,
+};

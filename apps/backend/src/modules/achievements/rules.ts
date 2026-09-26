@@ -19,21 +19,18 @@
  * nichts zu tragen.
  */
 
-import { type AchievementId, type ArcadeGameId, type AuditAction } from '@palantir/contracts';
+import {
+  ARCADE_GAMES,
+  type AchievementId,
+  type ArcadeGameId,
+  type AuditAction,
+} from '@palantir/contracts';
 import type { AchievementQueries } from './repository.js';
 
-/**
- * Übergang (Contracts-PR Spielhalle, 26.09.2026): Der Katalog kennt schon alle
- * 26 Spiele, spielbar sind bis zum Spielhallen-PR nur diese fünf. Ohne die feste
- * Liste wäre `alleskoenner` bis dahin unerreichbar.
- */
-const ALLESKOENNER_SPIELE: readonly ArcadeGameId[] = [
-  'kriechpfad',
-  'ballwechsel',
-  'steinbrecher',
-  'blockstapel',
-  'punktejaeger',
-];
+/** Die Spiele der Kategorie „Arcade" – Grundlage für `alleskoenner`. */
+export const ARCADE_ARCADE_GAME_IDS: readonly ArcadeGameId[] = ARCADE_GAMES.filter(
+  (game) => game.category === 'arcade',
+).map((game) => game.id);
 
 /**
  * Das Ereignis, das eine Prüfung ausgelöst hat.
@@ -282,9 +279,16 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
 
   // --- Spielhalle -----------------------------------------------------------
   eingeworfen: abRunden(1),
+  /*
+   * Seit dem Neubau der Spielhalle (26.09.2026) zählen nur die Spiele der
+   * Kategorie „Arcade". Mit allen 26 Spielen wäre das Abzeichen unerreichbar:
+   * Siege in Codenames oder Black Stories gibt es nur online, und nur Siege
+   * landen dort in der Bestenliste.
+   */
   alleskoenner: nachJedemSpiel(
     async ({ userId, queries }) =>
-      (await queries.arcadeDistinctGames(userId)) >= ALLESKOENNER_SPIELE.length,
+      (await queries.arcadeDistinctGames(userId, ARCADE_ARCADE_GAME_IDS)) >=
+      ARCADE_ARCADE_GAME_IDS.length,
   ),
 
   // --- Platzierungen --------------------------------------------------------

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7f1d1d"/>
+      <stop offset="1" stop-color="#1c0808"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.55">
+      <stop offset="0" stop-color="#ef4444" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ef4444" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="light" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#fffdf6"/>
+      <stop offset="0.6" stop-color="#efe3c8"/>
+      <stop offset="1" stop-color="#c9b48d"/>
+    </radialGradient>
+    <radialGradient id="dark" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.6" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#bg)"/>
+  <rect width="640" height="400" fill="url(#glow)"/>
+  <!-- Diagonales Brettmuster -->
+  <g transform="translate(320 250) rotate(45)" opacity="0.28">
+    <g fill="#fca5a5">
+      <rect x="-240" y="-240" width="80" height="80"/><rect x="-80" y="-240" width="80" height="80"/>
+      <rect x="80" y="-240" width="80" height="80"/><rect x="-160" y="-160" width="80" height="80"/>
+      <rect x="0" y="-160" width="80" height="80"/><rect x="160" y="-160" width="80" height="80"/>
+      <rect x="-240" y="-80" width="80" height="80"/><rect x="-80" y="-80" width="80" height="80"/>
+      <rect x="80" y="-80" width="80" height="80"/><rect x="-160" y="0" width="80" height="80"/>
+      <rect x="0" y="0" width="80" height="80"/><rect x="160" y="0" width="80" height="80"/>
+      <rect x="-240" y="80" width="80" height="80"/><rect x="-80" y="80" width="80" height="80"/>
+      <rect x="80" y="80" width="80" height="80"/><rect x="-160" y="160" width="80" height="80"/>
+      <rect x="0" y="160" width="80" height="80"/><rect x="160" y="160" width="80" height="80"/>
+    </g>
+  </g>
+  <!-- Sprungbögen -->
+  <g fill="none" stroke="#fef3c7" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 16" opacity="0.9">
+    <path d="M150 300 Q220 130 300 250"/>
+    <path d="M300 250 Q380 110 460 230"/>
+  </g>
+  <!-- Zwei überrumpelte dunkle Steine -->
+  <g>
+    <ellipse cx="228" cy="300" rx="52" ry="14" fill="#000" opacity="0.35"/>
+    <ellipse cx="228" cy="286" rx="50" ry="22" fill="#09090b"/>
+    <ellipse cx="228" cy="276" rx="50" ry="22" fill="url(#dark)" stroke="#ef4444" stroke-width="4"/>
+    <circle cx="214" cy="270" r="6" fill="#fff"/><circle cx="242" cy="270" r="6" fill="#fff"/>
+    <circle cx="215" cy="268" r="3" fill="#09090b"/><circle cx="243" cy="268" r="3" fill="#09090b"/>
+    <ellipse cx="228" cy="284" rx="5" ry="6" fill="#fca5a5"/>
+  </g>
+  <g>
+    <ellipse cx="384" cy="282" rx="52" ry="14" fill="#000" opacity="0.35"/>
+    <ellipse cx="384" cy="268" rx="50" ry="22" fill="#09090b"/>
+    <ellipse cx="384" cy="258" rx="50" ry="22" fill="url(#dark)" stroke="#ef4444" stroke-width="4"/>
+    <path d="M368 252 l8 6 M376 252 l-8 6 M392 252 l8 6 M400 252 l-8 6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M374 268 Q384 262 394 268" fill="none" stroke="#fca5a5" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <!-- Heller Stein im Sprung, schon mit Krone -->
+  <g transform="translate(470 150) rotate(-12)">
+    <ellipse cx="0" cy="16" rx="56" ry="24" fill="#a08a62"/>
+    <ellipse cx="0" cy="4" rx="56" ry="24" fill="url(#light)" stroke="#a08a62" stroke-width="3"/>
+    <ellipse cx="0" cy="4" rx="38" ry="15" fill="none" stroke="#c9b48d" stroke-width="3"/>
+    <path d="M-30 -8 L-36 -48 L-16 -30 L0 -58 L16 -30 L36 -48 L30 -8 Z" fill="url(#gold)" stroke="#92400e" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="0" cy="-60" r="5" fill="#fef3c7" stroke="#92400e" stroke-width="2"/>
+    <circle cx="-14" cy="0" r="4" fill="#3f2d12"/><circle cx="14" cy="0" r="4" fill="#3f2d12"/>
+    <path d="M-14 10 Q0 22 14 10" fill="none" stroke="#3f2d12" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+  <!-- Funken -->
+  <g fill="#fde68a">
+    <path d="M560 80 l5 12 12 5 -12 5 -5 12 -5 -12 -12 -5 12 -5 Z"/>
+    <path d="M90 90 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4 Z"/>
+    <path d="M540 300 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 Z"/>
+  </g>
+</svg>

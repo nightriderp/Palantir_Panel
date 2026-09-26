@@ -87,6 +87,13 @@ export interface AbuseLimit {
  * - `arcade.score` – 20/min: Eine Runde dauert Sekunden, nicht Millisekunden.
  *   Hält `arcade_scores` davon ab, im Takt der Schleife zu wachsen
  *   (`backend-community-14`).
+ * - `arcade.seed` – 60/min: Ein Startwert je Partie; auch hektisches
+ *   Neustarten (Flappy Bird) bleibt darunter.
+ * - `arcade.room` – 10/min: Räume anlegen. Die Obergrenze offener Räume je
+ *   Konto steht zusätzlich im Vertrag (`ARCADE_ROOM_MAX_OPEN_PER_USER`).
+ * - `arcade.move` – 120/min: Züge im Online-Raum. Zwei je Sekunde reichen auch
+ *   für Schnellschach und das Würfeln bei Monopoly.
+ * - `arcade.chat` – 30/min: wie `chat.message`.
  */
 export const ABUSE_LIMITS = {
   'chat.message': { windowSeconds: 60, maxAttempts: 30 },
@@ -95,6 +102,10 @@ export const ABUSE_LIMITS = {
   'quota.request': { windowSeconds: 24 * 60 * 60, maxAttempts: 3 },
   'game.request': { windowSeconds: 24 * 60 * 60, maxAttempts: 3 },
   'arcade.score': { windowSeconds: 60, maxAttempts: 20 },
+  'arcade.seed': { windowSeconds: 60, maxAttempts: 60 },
+  'arcade.room': { windowSeconds: 60, maxAttempts: 10 },
+  'arcade.move': { windowSeconds: 60, maxAttempts: 120 },
+  'arcade.chat': { windowSeconds: 60, maxAttempts: 30 },
 } as const satisfies Record<string, AbuseLimit>;
 
 /** Vorgang, für den eine Grenze gilt. */

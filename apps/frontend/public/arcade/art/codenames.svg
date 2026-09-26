@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b1a3f"/>
+      <stop offset="1" stop-color="#050a1c"/>
+    </linearGradient>
+    <radialGradient id="spot" cx="0.5" cy="0.55" r="0.55">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#2563eb" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5f0e6"/>
+      <stop offset="1" stop-color="#d6cdbb"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f87171"/>
+      <stop offset="1" stop-color="#b91c1c"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#bfdbfe" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#3b82f6" stop-opacity="0.15"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="640" height="400" fill="url(#bg)"/>
+  <ellipse cx="320" cy="230" rx="330" ry="210" fill="url(#spot)"/>
+  <g fill="#93c5fd" opacity="0.5">
+    <circle cx="60" cy="40" r="1.6"/><circle cx="140" cy="80" r="1.2"/><circle cx="560" cy="50" r="1.8"/>
+    <circle cx="600" cy="120" r="1.2"/><circle cx="470" cy="30" r="1.1"/><circle cx="210" cy="30" r="1.3"/>
+  </g>
+
+  <!-- Tisch mit Kartenraster in Schräglage -->
+  <g transform="translate(320 250) skewX(-8) scale(1 0.62)" filter="url(#shadow)">
+    <g transform="translate(-270 -150)">
+      <rect x="0" y="0" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="112" y="0" width="92" height="60" rx="8" fill="url(#red)"/>
+      <rect x="224" y="0" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="336" y="0" width="92" height="60" rx="8" fill="url(#blue)"/>
+      <rect x="448" y="0" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="0" y="80" width="92" height="60" rx="8" fill="url(#blue)"/>
+      <rect x="112" y="80" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="336" y="80" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="448" y="80" width="92" height="60" rx="8" fill="url(#red)"/>
+      <rect x="0" y="160" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="112" y="160" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="224" y="160" width="92" height="60" rx="8" fill="url(#red)"/>
+      <rect x="336" y="160" width="92" height="60" rx="8" fill="#18181b"/>
+      <rect x="448" y="160" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="0" y="240" width="92" height="60" rx="8" fill="url(#red)"/>
+      <rect x="112" y="240" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="224" y="240" width="92" height="60" rx="8" fill="url(#blue)"/>
+      <rect x="336" y="240" width="92" height="60" rx="8" fill="url(#card)"/>
+      <rect x="448" y="240" width="92" height="60" rx="8" fill="url(#blue)"/>
+      <g fill="#a8a29e" opacity="0.7">
+        <rect x="18" y="26" width="56" height="8" rx="4"/><rect x="242" y="26" width="56" height="8" rx="4"/>
+        <rect x="466" y="26" width="56" height="8" rx="4"/><rect x="130" y="106" width="56" height="8" rx="4"/>
+        <rect x="354" y="106" width="56" height="8" rx="4"/><rect x="18" y="186" width="56" height="8" rx="4"/>
+        <rect x="130" y="186" width="56" height="8" rx="4"/><rect x="466" y="186" width="56" height="8" rx="4"/>
+        <rect x="130" y="266" width="56" height="8" rx="4"/><rect x="354" y="266" width="56" height="8" rx="4"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Die verkleidete Karte in der Mitte: Sonnenbrille und falscher Schnurrbart -->
+  <g transform="translate(320 176) rotate(-6)" filter="url(#shadow)">
+    <rect x="-70" y="-50" width="140" height="96" rx="12" fill="url(#card)" stroke="#fff" stroke-width="3"/>
+    <path d="M-62 -54 L62 -54 L48 -80 Q0 -96 -48 -80 Z" fill="#1e293b"/>
+    <rect x="-74" y="-58" width="148" height="10" rx="5" fill="#0f172a"/>
+    <rect x="-40" y="-60" width="80" height="6" fill="#2563eb"/>
+    <rect x="-52" y="-22" width="44" height="26" rx="10" fill="#0f172a"/>
+    <rect x="8" y="-22" width="44" height="26" rx="10" fill="#0f172a"/>
+    <rect x="-8" y="-16" width="16" height="5" rx="2" fill="#0f172a"/>
+    <path d="M-44 -16 L-28 -16" stroke="#93c5fd" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+    <path d="M16 -16 L32 -16" stroke="#93c5fd" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+    <path d="M-34 22 Q-20 10 0 18 Q20 10 34 22 Q20 20 0 26 Q-20 20 -34 22 Z" fill="#422006"/>
+    <path d="M-10 34 Q0 40 10 34" stroke="#57534e" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Lupe, die gerade einen roten Begriff erwischt -->
+  <g transform="translate(470 110) rotate(28)" filter="url(#shadow)">
+    <rect x="-9" y="52" width="18" height="84" rx="8" fill="#1e3a8a"/>
+    <rect x="-9" y="52" width="18" height="14" fill="#fbbf24"/>
+    <circle cx="0" cy="0" r="58" fill="url(#glass)" stroke="#e2e8f0" stroke-width="10"/>
+    <path d="M-30 -28 Q-18 -44 4 -46" stroke="#fff" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.7"/>
+  </g>
+
+  <!-- Kleiner schwarzer Attentäter-Karten-Zünder, der nervös raucht -->
+  <g transform="translate(128 130)">
+    <circle cx="0" cy="0" r="30" fill="#18181b" stroke="#3f3f46" stroke-width="4"/>
+    <path d="M18 -22 Q34 -44 26 -60" stroke="#a16207" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <circle cx="26" cy="-62" r="7" fill="#fbbf24"/>
+    <circle cx="26" cy="-62" r="12" fill="#f97316" opacity="0.35"/>
+    <circle cx="-9" cy="-4" r="5" fill="#fff"/><circle cx="9" cy="-4" r="5" fill="#fff"/>
+    <circle cx="-8" cy="-3" r="2.4" fill="#18181b"/><circle cx="10" cy="-3" r="2.4" fill="#18181b"/>
+    <path d="M-8 12 Q0 6 8 12" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <circle cx="22" cy="6" r="3" fill="#93c5fd" opacity="0.8"/>
+  </g>
+</svg>

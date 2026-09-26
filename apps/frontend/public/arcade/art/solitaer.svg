@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <radialGradient id="felt" cx="0.5" cy="0.3" r="0.9">
+      <stop offset="0" stop-color="#16a34a"/>
+      <stop offset="0.6" stop-color="#065f46"/>
+      <stop offset="1" stop-color="#022c22"/>
+    </radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e2e8f0"/>
+    </linearGradient>
+    <pattern id="back" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="12" height="12" fill="#15803d"/>
+      <rect width="4" height="12" fill="#22c55e" opacity="0.5"/>
+    </pattern>
+    <path id="heart" d="M0 8 C-14 -6 -8 -18 0 -10 C8 -18 14 -6 0 8 Z"/>
+    <path id="spade" d="M0 -12 C-14 2 -10 12 -2 7 L-5 14 H5 L2 7 C10 12 14 2 0 -12 Z"/>
+    <path id="diamond" d="M0 -12 L9 0 L0 12 L-9 0 Z"/>
+    <g id="club">
+      <circle cx="0" cy="-6" r="5.5"/>
+      <circle cx="-6" cy="2" r="5.5"/>
+      <circle cx="6" cy="2" r="5.5"/>
+      <path d="M-2 2 L-4 13 H4 L2 2 Z"/>
+    </g>
+  </defs>
+  <rect width="640" height="400" fill="url(#felt)"/>
+  <!-- springende Karten als Freudensprung nach dem Sieg -->
+  <g opacity="0.55" fill="none" stroke="#bbf7d0" stroke-width="3" stroke-dasharray="2 10" stroke-linecap="round">
+    <path d="M470 120 Q520 20 560 120 Q590 200 620 150"/>
+    <path d="M430 150 Q470 80 500 170 Q530 250 580 220"/>
+  </g>
+  <!-- vier Ablagen oben -->
+  <g>
+    <rect x="40" y="30" width="80" height="112" rx="10" fill="url(#card)" transform="rotate(-6 80 86)"/>
+    <use href="#spade" transform="translate(80 86) scale(2.4)" fill="#0f172a"/>
+    <rect x="140" y="30" width="80" height="112" rx="10" fill="url(#card)" transform="rotate(4 180 86)"/>
+    <use href="#heart" transform="translate(180 88) scale(2.4)" fill="#e11d48"/>
+    <rect x="240" y="30" width="80" height="112" rx="10" fill="url(#card)" transform="rotate(-3 280 86)"/>
+    <use href="#diamond" transform="translate(280 86) scale(2.4)" fill="#e11d48"/>
+    <rect x="340" y="30" width="80" height="112" rx="10" fill="url(#card)" transform="rotate(5 380 86)"/>
+    <use href="#club" transform="translate(380 86) scale(2.4)" fill="#0f172a"/>
+  </g>
+  <!-- Kaskade im Tableau -->
+  <g>
+    <rect x="60" y="180" width="80" height="112" rx="10" fill="url(#back)" stroke="#bbf7d0" stroke-opacity="0.4"/>
+    <rect x="60" y="205" width="80" height="112" rx="10" fill="url(#back)" stroke="#bbf7d0" stroke-opacity="0.4"/>
+    <rect x="60" y="230" width="80" height="112" rx="10" fill="url(#card)"/>
+    <use href="#heart" transform="translate(80 250) scale(1)" fill="#e11d48"/>
+    <rect x="60" y="270" width="80" height="112" rx="10" fill="url(#card)"/>
+    <use href="#club" transform="translate(80 290)" fill="#0f172a"/>
+    <use href="#club" transform="translate(100 330) scale(2)" fill="#0f172a"/>
+
+    <rect x="170" y="190" width="80" height="112" rx="10" fill="url(#back)" stroke="#bbf7d0" stroke-opacity="0.4"/>
+    <rect x="170" y="230" width="80" height="112" rx="10" fill="url(#card)"/>
+    <use href="#diamond" transform="translate(190 250)" fill="#e11d48"/>
+    <use href="#diamond" transform="translate(210 290) scale(2)" fill="#e11d48"/>
+  </g>
+  <!-- die fröhliche Karte, die gleich auf die Ablage hüpft -->
+  <g transform="rotate(12 400 270)">
+    <rect x="340" y="200" width="120" height="168" rx="14" fill="url(#card)" stroke="#fbbf24" stroke-width="4"/>
+    <use href="#heart" transform="translate(365 228) scale(1.3)" fill="#e11d48"/>
+    <circle cx="385" cy="275" r="8" fill="#0f172a"/>
+    <circle cx="415" cy="275" r="8" fill="#0f172a"/>
+    <circle cx="388" cy="272" r="3" fill="#fff"/>
+    <circle cx="418" cy="272" r="3" fill="#fff"/>
+    <path d="M378 300 Q400 326 422 300" stroke="#e11d48" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="370" cy="298" r="7" fill="#fda4af" opacity="0.7"/>
+    <circle cx="430" cy="298" r="7" fill="#fda4af" opacity="0.7"/>
+  </g>
+  <!-- Arme und Beine der Karte -->
+  <g stroke="#fbbf24" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M462 250 Q500 220 510 180"/>
+    <path d="M338 262 Q300 240 296 200"/>
+    <path d="M400 372 L392 392 M430 366 L440 388"/>
+  </g>
+  <g fill="#fef9c3">
+    <path d="M520 60 l5 15 l15 5 l-15 5 l-5 15 l-5 -15 l-15 -5 l15 -5 z"/>
+    <path d="M590 250 l4 11 l11 4 l-11 4 l-4 11 l-4 -11 l-11 -4 l11 -4 z"/>
+    <circle cx="300" cy="170" r="4"/>
+  </g>
+</svg>
