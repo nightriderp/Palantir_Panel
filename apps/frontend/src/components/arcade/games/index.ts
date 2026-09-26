@@ -14,7 +14,7 @@ import { steinbrecher } from './steinbrecher';
  * Bestenliste) zieht automatisch nach (Lastenheft §4 „Erweiterbarkeit").
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Registry hält Spiele mit unterschiedlichem Zustandstyp; die Typsicherheit je Spiel liegt in dessen Modul.
-export const ARCADE_GAME_REGISTRY: Record<ArcadeGameId, ArcadeGame<any>> = {
+export const ARCADE_GAME_REGISTRY: Partial<Record<ArcadeGameId, ArcadeGame<any>>> = {
   kriechpfad,
   ballwechsel,
   steinbrecher,
@@ -24,5 +24,16 @@ export const ARCADE_GAME_REGISTRY: Record<ArcadeGameId, ArcadeGame<any>> = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- siehe oben.
 export function getArcadeGame(id: ArcadeGameId): ArcadeGame<any> {
-  return ARCADE_GAME_REGISTRY[id];
+  const game = ARCADE_GAME_REGISTRY[id];
+  if (!game) throw new Error(`Kein Spiel für ${id}.`);
+  return game;
+}
+
+/**
+ * Übergang (Contracts-PR Spielhalle, 26.09.2026): Der Katalog kennt schon alle
+ * 26 Spiele, diese Oberfläche nur die ersten fünf. Die Auswahlseite zeigt bis
+ * zum Spielhallen-PR nur, was hier spielbar ist.
+ */
+export function isPlayableHere(id: ArcadeGameId): boolean {
+  return id in ARCADE_GAME_REGISTRY;
 }

@@ -125,6 +125,16 @@ export const WEBSOCKET_EVENTS = [
    * geräteübergreifend konsistent – kein Anlass für eine `NotificationRule`.
    */
   'conversation.read',
+
+  // -- Spielhalle (26.09.2026, siehe `arcade.ts`) -----------------------------
+
+  /**
+   * Ein Online-Spielraum hat sich geändert (Zug, Beitritt, Chat, Start, Ende).
+   * Reines Live-Ereignis des Kanals `/arcade/live` an die Menschen im Raum.
+   * Trägt bewusst nur Kennung und Fassung: Die Sicht eines Sitzes holt jeder
+   * Browser selbst, damit verdeckte Information nie im Rundruf steht.
+   */
+  'arcadeRoom.updated',
 ] as const satisfies readonly EventNameScheme[];
 
 /** Alle aktuell definierten Event-Namen. */

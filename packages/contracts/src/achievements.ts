@@ -271,8 +271,8 @@ export const ACHIEVEMENT_CATALOG: Record<AchievementId, AchievementDefinition> =
   alleskoenner: {
     id: 'alleskoenner',
     name: 'Alleskönner',
-    description: 'Jedes Minispiel mindestens einmal gespielt.',
-    hint: 'Spiele jedes Minispiel mindestens einmal.',
+    description: 'Jedes Spiel der Kategorie „Arcade" mindestens einmal gespielt.',
+    hint: 'Spiele jedes Spiel der Kategorie „Arcade" mindestens einmal.',
     category: 'arcade',
     title: null,
   },

@@ -329,9 +329,25 @@ export {
   updateOverviewTileInputSchema,
 } from './overview-tile.js';
 export {
+  type SubmitArcadeRunInputParsed,
   type SubmitArcadeScoreInput,
+  ARCADE_JSON_MAX_CHARS,
+  ARCADE_RECORDED_MOVES_MAX,
+  ARCADE_REPLAY_BASE64_MAX_CHARS,
+  arcadeBotLevelSchema,
   arcadeGameIdSchema,
+  arcadeJsonSchema,
+  arcadeRoomChatInputSchema,
+  arcadeRoomCodeSchema,
+  arcadeRoomMoveInputSchema,
   arcadeScoreValueSchema,
+  arcadeSeatControllerSchema,
+  arcadeTrackTitleSchema,
+  arcadeTurnRecordingSchema,
+  createArcadeRoomInputSchema,
+  joinArcadeRoomInputSchema,
+  setArcadeRoomSeatInputSchema,
+  submitArcadeRunInputSchema,
   submitArcadeScoreInputSchema,
 } from './arcade.js';
 

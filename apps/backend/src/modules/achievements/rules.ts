@@ -19,13 +19,21 @@
  * nichts zu tragen.
  */
 
-import {
-  ARCADE_GAME_IDS,
-  type AchievementId,
-  type ArcadeGameId,
-  type AuditAction,
-} from '@palantir/contracts';
+import { type AchievementId, type ArcadeGameId, type AuditAction } from '@palantir/contracts';
 import type { AchievementQueries } from './repository.js';
+
+/**
+ * Übergang (Contracts-PR Spielhalle, 26.09.2026): Der Katalog kennt schon alle
+ * 26 Spiele, spielbar sind bis zum Spielhallen-PR nur diese fünf. Ohne die feste
+ * Liste wäre `alleskoenner` bis dahin unerreichbar.
+ */
+const ALLESKOENNER_SPIELE: readonly ArcadeGameId[] = [
+  'kriechpfad',
+  'ballwechsel',
+  'steinbrecher',
+  'blockstapel',
+  'punktejaeger',
+];
 
 /**
  * Das Ereignis, das eine Prüfung ausgelöst hat.
@@ -276,7 +284,7 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
   eingeworfen: abRunden(1),
   alleskoenner: nachJedemSpiel(
     async ({ userId, queries }) =>
-      (await queries.arcadeDistinctGames(userId)) >= ARCADE_GAME_IDS.length,
+      (await queries.arcadeDistinctGames(userId)) >= ALLESKOENNER_SPIELE.length,
   ),
 
   // --- Platzierungen --------------------------------------------------------
