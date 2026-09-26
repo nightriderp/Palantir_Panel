@@ -52,6 +52,9 @@ import { createDrizzleOverviewTileRepository } from './modules/overview-tiles/re
 import { registerOverviewTileRoutes } from './modules/overview-tiles/routes.js';
 import { createDrizzleGameRequestRepository } from './modules/game-requests/repository.js';
 import { registerGameRequestRoutes } from './modules/game-requests/routes.js';
+import { createUserPresetService } from './modules/user-presets/index.js';
+import { createDrizzleUserPresetRepository } from './modules/user-presets/repository.js';
+import { registerUserPresetRoutes } from './modules/user-presets/routes.js';
 import { createQuotaRequestService } from './modules/quota-requests/index.js';
 import { createDrizzleQuotaRequestRepository } from './modules/quota-requests/repository.js';
 import { registerQuotaRequestRoutes } from './modules/quota-requests/routes.js';
@@ -1220,6 +1223,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           // Damit der Wunsch den Betreiber erreicht, statt still in der
           // Tabelle zu stehen.
           events: notifications.eventSink,
+        }),
+        actorUserId: (request) => request.authUser?.id ?? null,
+      }),
+    );
+
+    /*
+     * Eigene Profile der Steuerung (Idee P / A2, 26.09.2026). Die Werte prueft
+     * der Dienst gegen dieselbe Registry wie die Steuerung.
+     */
+    await app.register(
+      registerUserPresetRoutes({
+        service: createUserPresetService({
+          repository: createDrizzleUserPresetRepository(db),
+          findGameType: (id) => spieltypen.find(id),
         }),
         actorUserId: (request) => request.authUser?.id ?? null,
       }),

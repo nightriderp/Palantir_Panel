@@ -22,6 +22,14 @@ vi.mock('@/lib/api/servers', async (importOriginal) => ({
   runLifecycleAction: api.runLifecycleAction,
 }));
 
+// Eigene Profile laden ihre Liste selbst – hier leer, getestet in EigeneProfile.test.tsx.
+vi.mock('@/lib/api/user-presets', () => ({
+  fetchUserPresets: vi.fn(() => Promise.resolve({ success: true, data: [], error: null })),
+  createUserPreset: vi.fn(),
+  updateUserPreset: vi.fn(),
+  deleteUserPreset: vi.fn(),
+}));
+
 function feld(overrides: Partial<GameConfigField> & Pick<GameConfigField, 'key' | 'label'>) {
   return {
     type: 'select',
