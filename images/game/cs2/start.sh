@@ -284,15 +284,6 @@ if [ "$PLUGINS" = 1 ]; then
     palantir_log 'Ein Plugin fehlt. Ausschalten oder neu starten - der Download wird dann wiederholt.'
     exit 69
   fi
-
-  # **Palantirs eigenes Plugin** (26.09.2026) liegt im Image und ist immer da,
-  # sobald die Grundlage an ist. Es tut nichts, bis das Panel
-  # `palantir_skip_warmup` bzw. `palantir_join_ct` einschaltet.
-  UEBUNG_PLUGIN="${PALANTIR_UEBUNG_PLUGIN:-${CS2_SKRIPTE:-/opt/palantir}/palantir-uebung/PalantirUebung.dll}"
-  if [ -f "$UEBUNG_PLUGIN" ]; then
-    mkdir -p "${ADDONS}/counterstrikesharp/plugins/PalantirUebung"
-    cp "$UEBUNG_PLUGIN" "${ADDONS}/counterstrikesharp/plugins/PalantirUebung/PalantirUebung.dll"
-  fi
 else
   gameinfo_austragen
 fi
@@ -396,8 +387,6 @@ KAUFEN="$(schalter 'Ueberall kaufen' "${CS2_BUY_ANYWHERE:-false}")" || exit 78
 OHNE_AUFWAERMEN="$(schalter 'Aufwaermphase ueberspringen' "${CS2_SKIP_WARMUP:-false}")" || exit 78
 OHNE_STANDZEIT="$(schalter 'Keine Standzeit' "${CS2_NO_FREEZETIME:-false}")" || exit 78
 SOFORT_SPAWNEN="$(schalter 'Sofort spawnen' "${CS2_INSTANT_RESPAWN:-false}")" || exit 78
-UEBUNG="$(schalter 'Uebungs-Einstellungen' "${CS2_PRACTICE:-false}")" || exit 78
-NUR_CT="$(schalter 'Nur CT' "${CS2_CT_ONLY:-false}")" || exit 78
 
 # **GOTV** (Schritt 5.1): der Zuschauerzugang, eigener UDP-Port aus dem Pool –
 # drinnen dieselbe Nummer wie draußen (`CS2_TV_PORT`), aus demselben Grund wie
@@ -443,8 +432,7 @@ esac
   # Training. Unendlich Munition und Granaten-Kamera sind in CS2
   # cheat-geschützt – ohne `sv_cheats 1` wiese der Server sie ab. Ausgeschaltetes
   # schreibt nichts: Dann gelten die Werte der Modus-Konfiguration.
-  # Die Übungs-Einstellungen brauchen es auch (Regeneration, Ping).
-  if [ "$MUNITION" = 1 ] || [ "$GRANATEN_KAMERA" = 1 ] || [ "$UEBUNG" = 1 ]; then
+  if [ "$MUNITION" = 1 ] || [ "$GRANATEN_KAMERA" = 1 ]; then
     printf 'sv_cheats 1\n'
   else
     printf 'sv_cheats 0\n'
@@ -463,16 +451,8 @@ esac
   # Übung (Betreiber 25.09.2026): keine Aufwärmphase, keine Standzeit, sofort
   # spawnen – auch wer nach Rundenstart ein Team wählt, statt bis Rundenende
   # zuzuschauen. Aus schreibt nichts: Dann gilt, was der Modus mitbringt.
-  # Aufwärmphase (25.09.2026): Sie beginnt erst, wenn der erste Spieler
-  # verbindet – nach dieser Datei; ein `mp_warmup_end` hier liefe ins Leere,
-  # und `mp_warmup_online_enabled 0` fror eine schon laufende bei 2:00 ein.
-  # Stattdessen die kürzeste Aufwärmzeit, die CS2 zulässt (5 s). „Alle
-  # verbunden“ (`mp_endwarmup_player_count 1`) kürzte zwar, schrieb aber jede
-  # Sekunde „Das Spiel beginnt in 1 Sekunden“ in den Chat (v2.4.41).
-  # Mit MetaMod beendet Palantirs Plugin sie sofort, sobald jemand da ist
-  # (`palantir_skip_warmup`); die 5 s bleiben für Server ohne Plugins.
   if [ "$OHNE_AUFWAERMEN" = 1 ]; then
-    printf 'mp_warmup_pausetimer 0\nmp_warmuptime 5\npalantir_skip_warmup 1\n'
+    printf 'mp_warmup_online_enabled 0\nmp_warmup_end\n'
   fi
   [ "$OHNE_STANDZEIT" = 1 ] && printf 'mp_freezetime 0\n'
   if [ "$SOFORT_SPAWNEN" = 1 ]; then
@@ -483,61 +463,12 @@ esac
     printf 'mp_buy_anywhere 1\nmp_buytime 9999\n'
     printf 'mp_maxmoney 60000\nmp_startmoney 60000\nmp_afterroundmoney 60000\n'
   fi
-  [ "$UEBUNG" = 1 ] && printf 'exec palantir_uebung_an\n'
-  # Beitritt als CT (26.09.2026): Palantirs Plugin setzt Spieler zu CT, ohne
-  # sie dort festzuhalten (`mp_humanteam ct` sperrte T ganz). Ohne Plugins
-  # teilt das Spiel nach 1 s selbst zu.
-  [ "$NUR_CT" = 1 ] && printf 'palantir_join_ct 1\nmp_force_pick_time 1\n'
   # Kein Ruhezustand bei leerem Server (24.09.2026): Schlafend beantwortete
   # CS2 Konsolenbefehle aus dem Panel nicht – `mp_match_can_clinch` blieb
   # ohne Antwort, bis ein Spieler den Server weckte. Kostet etwas CPU im
   # Leerlauf.
   printf 'sv_hibernate_when_empty 0\n'
 } > "${CFG_ORDNER}/palantir.cfg"
-
-# **Übungs-Einstellungen** (Betreiber 25.09.2026): die Befehle der Workshop-Map
-# „Dust 2 Utility“, nicht deren Map-Daten. Ohne Puppen-Bots (Betreiber 26.09.2026) –
-# statt dessen die Übungsbefehle von Palantirs Plugin (`palantir_practice`:
-# !spawn, !tspawn, !ctspawn, !spawns, !save, !back). `…_aus` setzt `bot_stop`
-# usw. weiter zurück, falls ein Server sie von v2.4.41 bis v2.4.43 noch hat. Eigene Dateien, weil das Panel sie
-# live mit `exec` schaltet – als Konsolenzeile wären sie zu lang.
-#
-# `…_aus` setzt nur zurück, was kein Modus selbst setzt (Valves Grundwerte aus
-# der Cvar-Liste). Rüstung, Waffe beim Tod, Bot-Funk, Teamgrenzen, Zeitlimit
-# usw. bringt die Modus-Konfiguration beim nächsten Kartenwechsel zurück – ein
-# fester Wert hier nagelte sonst z. B. Deathmatch fest.
-{
-  echo '// Schreibt Palantir bei jedem Start - Uebungs-Einstellungen an.'
-  printf '%s\n' \
-    'sv_cheats 1' \
-    'mp_timelimit 0' 'mp_match_end_changelevel 0' \
-    'sv_regeneration_force_on 1' 'sv_falldamage_scale 0' \
-    'mp_respawn_immunitytime 0' 'mp_free_armor 1' 'mp_death_drop_gun 0' \
-    'mp_weapons_allow_map_placed 0' 'mp_solid_teammates 0' \
-    'mp_limitteams 0' 'mp_autoteambalance 0' 'mp_playercashawards 0' \
-    'mp_radar_showall 1' 'sv_disable_radar 1' \
-    'sv_grenade_trajectory_prac_trailtime 8' \
-    'player_ping_token_cooldown 0' 'sv_radio_throttle_window 0' \
-    'sv_staminajumpcost 0' 'sv_staminalandcost 0' 'sv_staminamax 0' \
-    'sv_staminarecoveryrate 0' \
-    'sv_enablebunnyhopping 1' 'sv_autobunnyhopping 1' \
-    'sv_jump_spam_penalty_time 0' \
-    'palantir_practice 1'
-} > "${CFG_ORDNER}/palantir_uebung_an.cfg"
-{
-  echo '// Schreibt Palantir bei jedem Start - Uebungs-Einstellungen aus.'
-  printf '%s\n' \
-    'sv_regeneration_force_on 0' 'sv_falldamage_scale 1' \
-    'mp_autoteambalance 1' 'mp_radar_showall 0' 'sv_disable_radar 0' \
-    'sv_grenade_trajectory_prac_trailtime 0' \
-    'player_ping_token_cooldown 20' 'sv_radio_throttle_window 10' \
-    'sv_staminajumpcost 0.08' 'sv_staminalandcost 0.05' 'sv_staminamax 80' \
-    'sv_staminarecoveryrate 60' \
-    'sv_enablebunnyhopping 0' 'sv_autobunnyhopping 0' \
-    'sv_jump_spam_penalty_time 0.015625' \
-    'bot_stop 0' 'bot_zombie 0' 'bot_dont_shoot 0' \
-    'palantir_practice 0'
-} > "${CFG_ORDNER}/palantir_uebung_aus.cfg"
 
 # **Nach der Modus-Konfiguration noch einmal** (Schritt 3). Beim Laden jeder
 # Karte führt CS2 `gamemode_<modus>.cfg` aus, und die setzt unter anderem die

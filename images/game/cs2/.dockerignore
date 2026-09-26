@@ -14,10 +14,6 @@ package.json
 .turbo
 node_modules
 
-# Lokale Bauten des eigenen Plugins – im Image baut die Stufe `uebung` selbst.
-palantir-uebung/bin
-palantir-uebung/obj
-
 # Beschreibung und Fassung liest der Workflow, nicht der Build.
 README.md
 VERSION
