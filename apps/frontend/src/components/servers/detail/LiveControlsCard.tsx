@@ -5,8 +5,10 @@ import {
   type GameConfigValue,
   type GameConfigValues,
   type GameLiveControl,
+  type GamePreset,
   type GameServerDto,
   type GameTypeDto,
+  type UserPresetDto,
   isTransitionalServerStatus,
 } from '@palantir/contracts';
 import { useMemo, useState } from 'react';
@@ -14,8 +16,9 @@ import { Button, Panel, Toggle, useToast } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
 import { applyLiveValues, fetchGameTypes, runLifecycleAction } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
+import { fetchUserPresets } from '@/lib/api/user-presets';
 import { ConfigFields } from '../form/ConfigFields';
-import { EigeneProfile } from './EigeneProfile';
+import { ProfilSpeichern } from './ProfilSpeichern';
 
 /**
  * Steuerung (Betreiber-Wunsch 23.09.2026): Karte, Modus, Bots und was ein Spiel
@@ -112,6 +115,19 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
   const [busy, setBusy] = useState(false);
   const [aufgeklappt, setAufgeklappt] = useState<ReadonlySet<string>>(() => new Set());
 
+  /*
+   * **Eigene Profile** (Idee P / A2, Betreiber 26.09.2026) stehen im normalen
+   * Profil-Menü, hinter den mitgelieferten – mit der Kennung `eigen:<id>`.
+   * Gewählt legt eins seine Werte in den Entwurf wie jedes Profil; das
+   * Profilfeld selbst behält seinen Wert, denn `eigen:…` kennt der Server
+   * nicht. Angezeigt wird das gewählte eigene Profil trotzdem.
+   */
+  const eigene = useApiResource<UserPresetDto[]>(
+    (signal) => fetchUserPresets(server.gameType, signal),
+    [server.gameType],
+  );
+  const [eigenesGewaehlt, setEigenesGewaehlt] = useState<string | null>(null);
+
   // Kommt ein neuer Stand (Übernahme, Neustart), gilt er – ein alter Entwurf
   // bliebe sonst stehen, obwohl der Server längst etwas anderes spielt.
   // Abgeglichen während des Renderns statt in einem Effekt: So empfiehlt es
@@ -123,6 +139,65 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
 
   if (steuerungen.length === 0 || spiel === null) {
     return null;
+  }
+
+  const eigeneListe = eigene.data ?? [];
+  const EIGEN = 'eigen:';
+  const presetFeld = spiel.presetField;
+  const alleProfile: GamePreset[] = [
+    ...(spiel.presets ?? []),
+    ...eigeneListe.map((profil) => ({
+      id: `${EIGEN}${profil.id}`,
+      label: `★ ${profil.name}`,
+      description: 'Eigenes Profil.',
+      values: profil.values,
+    })),
+  ];
+  const felderMitEigenen = spiel.configFields.map((feld) =>
+    feld.key !== presetFeld || eigeneListe.length === 0
+      ? feld
+      : {
+          ...feld,
+          options: [...feld.options, ...eigeneListe.map((profil) => `${EIGEN}${profil.id}`)],
+          optionLabels: {
+            ...feld.optionLabels,
+            ...Object.fromEntries(
+              eigeneListe.map((profil) => [`${EIGEN}${profil.id}`, `★ ${profil.name}`]),
+            ),
+          },
+        },
+  );
+  const gewaehltesEigenes =
+    eigeneListe.find((profil) => `${EIGEN}${profil.id}` === eigenesGewaehlt) ?? null;
+  const anzeigeWerte: GameConfigValues =
+    presetFeld !== undefined && gewaehltesEigenes !== null
+      ? { ...entwurf, [presetFeld]: `${EIGEN}${gewaehltesEigenes.id}` }
+      : entwurf;
+  const liveFelder = steuerungen.flatMap((steuerung) => steuerung.fields);
+
+  function feldAendern(key: string, wert: GameConfigValue) {
+    if (key === presetFeld) {
+      if (typeof wert === 'string' && wert.startsWith(EIGEN)) {
+        setEigenesGewaehlt(wert);
+
+        return;
+      }
+
+      setEigenesGewaehlt(null);
+    }
+
+    setEntwurf((bisher) => ({ ...bisher, [key]: wert }));
+  }
+
+  function werteZumSpeichern(): GameConfigValues {
+    const werte: GameConfigValues = {};
+
+    for (const key of liveFelder) {
+      const wert = entwurf[key];
+      if (wert !== undefined) werte[key] = wert;
+    }
+
+    return werte;
   }
 
   const laeuft = server.status === 'running';
@@ -304,15 +379,13 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
 
         {offen ? (
           <ConfigFields
-            fields={spiel.configFields.filter((feld) => steuerung.fields.includes(feld.key))}
-            values={entwurf}
-            onChange={(key: string, wert: GameConfigValue) =>
-              setEntwurf((bisher) => ({ ...bisher, [key]: wert }))
-            }
+            fields={felderMitEigenen.filter((feld) => steuerung.fields.includes(feld.key))}
+            values={anzeigeWerte}
+            onChange={feldAendern}
             lockAfterCreate={false}
             disabled={imUebergang || busy || hinweis !== null}
             hideHints={steuerung.showHints !== true}
-            presets={spiel.presets ?? []}
+            presets={alleProfile}
             {...(spiel.presetField === undefined ? {} : { presetField: spiel.presetField })}
           />
         ) : (
@@ -331,15 +404,6 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
       <h3 className="mb-3 text-base font-semibold">Steuerung</h3>
 
       <div className="flex flex-col gap-4">
-        {/* Eigene Profile (Idee P / A2): wählen legt die Werte in den Entwurf. */}
-        <EigeneProfile
-          gameType={spiel.id}
-          entwurf={entwurf}
-          felder={steuerungen.flatMap((steuerung) => steuerung.fields)}
-          onWaehlen={(werte) => setEntwurf((bisher) => ({ ...bisher, ...werte }))}
-          disabled={imUebergang || busy}
-        />
-
         {bloecke.map((block) =>
           block.gruppe === undefined ? (
             <section key={block.key} aria-label={block.titel} className="flex flex-col gap-2">
@@ -392,7 +456,18 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
         </p>
       ) : null}
 
-      <div className="mt-4 flex justify-end">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <ProfilSpeichern
+          gameType={spiel.id}
+          eigene={eigeneListe}
+          gewaehlt={gewaehltesEigenes}
+          werte={werteZumSpeichern}
+          onGeaendert={(gespeichert) => {
+            eigene.reload();
+            setEigenesGewaehlt(gespeichert === null ? null : `${EIGEN}${gespeichert.id}`);
+          }}
+          disabled={imUebergang || busy}
+        />
         <Button
           variant="primary"
           disabled={imUebergang || busy || geaendert.length === 0}

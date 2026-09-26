@@ -38,6 +38,8 @@ export const ICON_PATHS = {
   restart: 'M19.99 12.42A8 8 0 1 1 17.85 6.54M17.54 2.96L17.85 6.54L14.3 5.98',
   copy: 'M9 9h11v11H9zM5 15V5h11v3',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+  /** Diskette – Speichern (eigene Profile, 26.09.2026). */
+  save: 'M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6',
   check: 'M5 12l5 5L19 8',
   close: 'M6 6l12 12M18 6L6 18',
   users: 'M8 12a4 4 0 100-8 4 4 0 000 8zM2 21a6 6 0 0112 0M17 8a3 3 0 010 6M22 21a5 5 0 00-6-5',

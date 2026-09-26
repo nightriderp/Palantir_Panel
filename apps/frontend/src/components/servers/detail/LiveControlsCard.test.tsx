@@ -23,8 +23,12 @@ vi.mock('@/lib/api/servers', async (importOriginal) => ({
 }));
 
 // Eigene Profile laden ihre Liste selbst – hier leer, getestet in EigeneProfile.test.tsx.
-vi.mock('@/lib/api/user-presets', () => ({
+const eigene = vi.hoisted(() => ({
   fetchUserPresets: vi.fn(() => Promise.resolve({ success: true, data: [], error: null })),
+}));
+
+vi.mock('@/lib/api/user-presets', () => ({
+  fetchUserPresets: eigene.fetchUserPresets,
   createUserPreset: vi.fn(),
   updateUserPreset: vi.fn(),
   deleteUserPreset: vi.fn(),
@@ -102,6 +106,63 @@ beforeEach(() => {
 });
 
 describe('LiveControlsCard', () => {
+  it('führt eigene Profile im Profil-Menü – gewählt legen sie ihre Werte in den Entwurf', async () => {
+    eigene.fetchUserPresets.mockResolvedValueOnce({
+      success: true,
+      data: [
+        {
+          id: 'p1',
+          gameType: 'test',
+          name: 'Smokes',
+          values: { bots: 4 },
+          createdAt: '2026-09-26T10:00:00.000Z',
+          updatedAt: '2026-09-26T10:00:00.000Z',
+          permissions: { canEdit: true, canDelete: true },
+        },
+      ],
+      error: null,
+    } as never);
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [
+        gameType({
+          configFields: [
+            feld({
+              key: 'preset',
+              label: 'Profil',
+              defaultValue: 'none',
+              options: ['none'],
+              optionLabels: { none: 'Kein Profil' },
+            }),
+            feld({ key: 'bots', label: 'Bots', type: 'number', defaultValue: 0, min: 0, max: 10 }),
+          ],
+          presets: [{ id: 'none', label: 'Kein Profil', description: 'Nichts.', values: {} }],
+          presetField: 'preset',
+          liveControls: [
+            { id: 'profil', label: 'Profil', fields: ['preset'], commands: [] },
+            { id: 'bots', label: 'Bots', fields: ['bots'], commands: ['bot_quota {bots}'] },
+          ],
+        }),
+      ],
+      error: null,
+    });
+    zeichne('running');
+
+    await screen.findByRole('option', { name: '★ Smokes' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Profil' }), {
+      target: { value: 'eigen:p1' },
+    });
+    // Das Menü zeigt das eigene Profil, der Server bekommt nur dessen Werte.
+    expect((screen.getByRole('combobox', { name: 'Profil' }) as HTMLSelectElement).value).toBe(
+      'eigen:p1',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+
+    await waitFor(() => {
+      expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { bots: 4 });
+    });
+  });
+
   it('zeigt nichts bei einem Spiel ohne Live-Steuerung', async () => {
     api.fetchGameTypes.mockResolvedValue({ success: true, data: [gameType()], error: null });
     zeichne('running');
