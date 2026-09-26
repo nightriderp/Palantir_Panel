@@ -1271,6 +1271,8 @@ describe('start.sh – Stoppsignal (Schritt 3.1)', nurMitSignalen, () => {
         PALANTIR_DATA_DIR: posix(ordner.daten),
         PALANTIR_LIB_DIR: LIB_ORDNER,
         PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+        // Plugins sind ohne Angabe an (26.09.2026) – sonst ginge es ins Netz.
+        CS2_PLUGINS: 'false',
         TEST_SERVER_WARTET: '1',
       },
     });
