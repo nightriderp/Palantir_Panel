@@ -5,120 +5,220 @@ import {
   type ArcadeGameId,
   type ArcadeLeaderboardDto,
 } from '@palantir/contracts';
-import { useCallback, useState } from 'react';
-import { Button, Panel, useToast } from '@/components/shared';
-import { errorText } from '@/lib/api/client';
-import { fetchArcadeLeaderboard, submitArcadeScore } from '@/lib/arcade/api';
-import { useApiResource } from '@/lib/api/useApiResource';
+import { useEffect, useState } from 'react';
+import { Button, EmptyState, Panel, cn } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
-import { GameHost } from './engine/GameHost';
-import { getArcadeGame } from './games/index';
+import { useApiResource } from '@/lib/api/useApiResource';
+import { fetchArcadeLeaderboard } from '@/lib/arcade/api';
+import { useArcadeAudio } from '@/lib/arcade/audio/ArcadeAudioProvider';
+import { AudioControls } from './AudioControls';
+import { modeBadges, playerLabel } from './GameCard';
 import { Leaderboard } from './Leaderboard';
+import { RealtimeHost } from './realtime/RealtimeHost';
+import { getRealtimeRenderer } from './realtime/renderers';
+import { getTurnBoard } from './turn/boards';
+import { LocalTurnHost } from './turn/LocalTurnHost';
+import { RoomBrowser } from './turn/RoomBrowser';
+import { TurnSetup, type LocalMatchConfig } from './turn/TurnSetup';
 
 /**
- * Bildschirm eines einzelnen Minispiels (Arbeitspaket F8).
+ * Bildschirm eines Spiels: Kopf, Spielfläche, Anleitung, Bestenliste.
  *
- * Vereint das Spielfeld (über {@link GameHost}) mit der nutzerbezogenen
- * Bestenliste. Nach jeder Partie schickt der Bildschirm den Endpunktestand an
- * die API – das Backend ist die Instanz, die den Score speichert (Lastenheft
- * §3.9). Ohne Sitzung (`canSubmit === false`) wird nur gespielt, nicht
- * abgeschickt.
+ * Echtzeit-Spiele starten direkt (`RealtimeHost`); rundenbasierte zeigen erst
+ * die Einstellungen, dann die Partie am Gerät oder die Online-Räume. Die Musik
+ * des Spiels läuft, solange der Bildschirm offen ist – auf der Auswahlseite
+ * bleibt es still.
  */
 
 export interface GameScreenProps {
   gameId: ArcadeGameId;
   onBack(): void;
+  /** Online-Raum öffnen (über seinen Code, landet in der Adresse). */
+  onOpenRoom(code: string): void;
 }
 
-export function GameScreen({ gameId, onBack }: GameScreenProps) {
-  const definition = ARCADE_GAME_CATALOG[gameId];
-  const game = getArcadeGame(gameId);
-  const toast = useToast();
+type TurnStage =
+  | { kind: 'setup' }
+  | { kind: 'local'; config: LocalMatchConfig; round: number }
+  | { kind: 'online' };
+
+/**
+ * Anleitung wie geschrieben: Die Bretter liefern Absätze und „•"-Listen mit
+ * Zeilenumbrüchen – `whitespace-pre-line` erhält beides, ohne dass hier
+ * jemand den Text zerlegen und dabei den Einleitungssatz verlieren muss.
+ */
+function Anleitung({ text }: { text: string }) {
+  return <p className="whitespace-pre-line text-sm leading-relaxed text-ink-muted">{text}</p>;
+}
+
+export function GameScreen({ gameId, onBack, onOpenRoom }: GameScreenProps) {
+  const game = ARCADE_GAME_CATALOG[gameId];
   const { user } = useSession();
+  const { playMusic } = useArcadeAudio();
+  const renderer = game.engine === 'realtime' ? getRealtimeRenderer(gameId) : null;
+  const board = game.engine === 'turn' ? getTurnBoard(gameId) : null;
+  const [stage, setStage] = useState<TurnStage>({ kind: 'setup' });
+  const [lastConfig, setLastConfig] = useState<LocalMatchConfig | null>(null);
 
   const leaderboard = useApiResource<ArcadeLeaderboardDto>(
     (signal) => fetchArcadeLeaderboard(gameId, signal),
     [gameId],
   );
-
-  const [submitting, setSubmitting] = useState(false);
-
-  const canSubmit = leaderboard.data?.permissions.canSubmit ?? user !== null;
-
   /*
-   * Nur `reload` als Abhängigkeit, nicht die ganze Ressource
-   * (Audit-Fundstelle frontend-lib-03).
-   *
-   * `reload` ist stabil, `leaderboard` wechselt dagegen mit jedem geladenen
-   * Stand die Identität. Zusammen mit der Ref in `GameHost` ist damit sicher,
-   * dass eine nachladende Bestenliste keine laufende Partie zurücksetzt.
+   * Nur `reload` weiterreichen, nicht die ganze Ressource (Audit-Fundstelle
+   * frontend-lib-03): Die Ressource wechselt mit jedem geladenen Stand die
+   * Identität, und eine nachladende Bestenliste darf keine laufende Partie
+   * neu anlegen.
    */
   const { reload: reloadLeaderboard } = leaderboard;
 
-  const handleGameOver = useCallback(
-    async (score: number) => {
-      if (!canSubmit) {
-        toast.warning(
-          'Nicht angemeldet – dein Ergebnis wird nicht in die Bestenliste eingetragen.',
-        );
-        return;
-      }
+  useEffect(() => {
+    playMusic(gameId);
+    return () => playMusic(null);
+  }, [gameId, playMusic]);
 
-      setSubmitting(true);
-      const result = await submitArcadeScore(gameId, score);
-      setSubmitting(false);
+  const anleitung = renderer?.instructions || board?.rulesText || game.description;
+  const myName = user?.displayName ?? 'Du';
 
-      if (!result.success) {
-        toast.error(errorText(result));
-        return;
-      }
-
-      if (result.data.isNewPersonalBest) {
-        toast.success(`Neuer Bestwert: ${result.data.personal.bestScore} Punkte!`);
-      } else {
-        toast.show(`Ergebnis gespeichert: ${score} Punkte.`);
-      }
-      reloadLeaderboard();
-    },
-    [canSubmit, gameId, reloadLeaderboard, toast],
-  );
+  let inhalt;
+  if (game.engine === 'realtime') {
+    inhalt = renderer ? (
+      <RealtimeHost renderer={renderer} onSubmitted={reloadLeaderboard} />
+    ) : (
+      <EmptyState icon="warning" title="Dieses Spiel ist noch nicht spielbar" />
+    );
+  } else if (!board) {
+    inhalt = <EmptyState icon="warning" title="Dieses Spiel ist noch nicht spielbar" />;
+  } else if (stage.kind === 'local') {
+    inhalt = (
+      <LocalTurnHost
+        key={stage.round}
+        game={game}
+        board={board}
+        config={stage.config}
+        onSubmitted={reloadLeaderboard}
+        onAgain={() => setStage({ kind: 'local', config: stage.config, round: stage.round + 1 })}
+        onExit={() => setStage({ kind: 'setup' })}
+      />
+    );
+  } else if (stage.kind === 'online') {
+    inhalt = (
+      <div className="flex flex-col gap-3">
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            iconLeft="arrowLeft"
+            onClick={() => setStage({ kind: 'setup' })}
+          >
+            Andere Spielweise
+          </Button>
+        </div>
+        <RoomBrowser gameId={gameId} onOpen={onOpenRoom} />
+      </div>
+    );
+  } else {
+    inhalt = (
+      <TurnSetup
+        game={game}
+        board={board}
+        myName={myName}
+        initial={lastConfig}
+        onOnline={() => setStage({ kind: 'online' })}
+        onStartLocal={(config) => {
+          setLastConfig(config);
+          setStage({ kind: 'local', config, round: 0 });
+        }}
+      />
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-5 p-5">
-      <div className="flex items-start gap-3">
+    <div className="flex flex-col gap-4 p-3 sm:p-5">
+      <header
+        className="relative flex flex-wrap items-center gap-3 overflow-hidden rounded-2xl border border-line-strong p-3"
+        style={{ background: `linear-gradient(120deg, ${game.accent}26, transparent 60%)` }}
+      >
         <Button variant="secondary" size="sm" iconLeft="arrowLeft" onClick={onBack}>
-          Zurück
+          Spielhalle
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold text-ink">{definition.name}</h1>
-          <p className="mt-0.5 text-sm text-ink-muted">{definition.tagline}</p>
+        {/* eslint-disable-next-line @next/next/no-img-element -- statische SVG-Kachel */}
+        <img
+          src={`/arcade/art/${gameId}.svg`}
+          alt=""
+          className="hidden h-12 rounded-lg border border-line object-cover sm:block"
+          style={{ aspectRatio: '16 / 10' }}
+        />
+        {/* Auf dem Handy eine eigene Zeile, sonst bleibt vom Namen nur „T…". */}
+        <div className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1">
+          <h1 className="truncate text-xl font-bold text-ink sm:text-2xl">{game.name}</h1>
+          <p className="truncate text-sm text-ink-muted">{game.tagline}</p>
         </div>
-      </div>
+        <div className="ml-auto sm:ml-0">
+          <AudioControls />
+        </div>
+      </header>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="flex flex-col gap-3">
-          <GameHost game={game} onGameOver={handleGameOver} />
-          <Panel variant="outline" className="text-sm text-ink-muted">
-            {game.instructions}
-            {submitting ? (
-              <span className="mt-1 block text-brand-bright">Ergebnis wird gespeichert …</span>
-            ) : null}
-            {!canSubmit ? (
-              <span className="mt-1 block text-warning">
-                Du bist nicht angemeldet – Ergebnisse werden nicht gespeichert.
-              </span>
-            ) : null}
+      {/*
+       * Rundenbasierte Spiele bringen schon eine eigene Seitenleiste mit (Tisch,
+       * Verlauf). Stünde die Bestenliste bereits ab `xl` als dritte Spalte daneben,
+       * bliebe fürs Brett auf einem Laptop kaum ein Drittel der Breite – bei
+       * Catan oder Monopoly zu wenig. Sie rückt deshalb erst ab `2xl` nach rechts.
+       */}
+      <div
+        className={cn(
+          'grid gap-4',
+          game.engine === 'turn'
+            ? '2xl:grid-cols-[minmax(0,1fr)_320px]'
+            : 'xl:grid-cols-[minmax(0,1fr)_320px]',
+        )}
+      >
+        <div className="flex min-w-0 flex-col gap-3">{inhalt}</div>
+
+        <aside
+          className={cn(
+            'flex flex-col gap-4',
+            game.engine === 'turn'
+              ? '2xl:sticky 2xl:top-4 2xl:self-start'
+              : 'xl:sticky xl:top-4 xl:self-start',
+          )}
+        >
+          <Panel variant="outline" padding="none">
+            <details className="group" open={game.engine === 'turn' && stage.kind === 'setup'}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-3.5 text-base font-semibold text-ink">
+                So wird gespielt
+                <span
+                  aria-hidden
+                  className="text-ink-faint transition-transform group-open:rotate-180"
+                >
+                  ▾
+                </span>
+              </summary>
+              <div className="flex flex-col gap-2 px-3.5 pb-3.5">
+                <Anleitung text={anleitung} />
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {[...modeBadges(game), playerLabel(game), game.duration].map((badge) => (
+                    <span
+                      key={badge}
+                      className="rounded-md border border-line bg-fill px-1.5 py-0.5 text-xs text-ink-soft"
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </details>
           </Panel>
-        </div>
-
-        <Panel className="lg:sticky lg:top-4 lg:self-start">
-          <Leaderboard
-            data={leaderboard.data}
-            loading={leaderboard.loading}
-            error={leaderboard.error}
-            onReload={leaderboard.reload}
-          />
-        </Panel>
+          <Panel>
+            <Leaderboard
+              gameId={gameId}
+              data={leaderboard.data}
+              loading={leaderboard.loading}
+              error={leaderboard.error}
+              onReload={reloadLeaderboard}
+            />
+          </Panel>
+        </aside>
       </div>
     </div>
   );

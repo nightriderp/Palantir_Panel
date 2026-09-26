@@ -118,7 +118,11 @@ import {
 } from './modules/server-orchestration/index.js';
 import { effectiveUploadLimitBytes } from './modules/server-orchestration/files.js';
 import { MAX_AGENT_COMMAND_RESULT_BYTES } from './modules/server-orchestration/agent-frame.js';
-import { registerArcade } from './modules/arcade/index.js';
+import {
+  ARCADE_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  type ArcadeLiveHub,
+  registerArcade,
+} from './modules/arcade/index.js';
 import { type AchievementService, registerAchievements } from './modules/achievements/index.js';
 import { registerHealthRoutes } from './routes/health.js';
 import {
@@ -532,6 +536,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     let erfolge: AchievementService | null = null;
     /*
+     * Live-Kanal der Spielhalle. Entsteht erst weiter unten mit der Arcade,
+     * die Sperre/Abmeldung (`closeLiveConnections`) muss ihn aber schon
+     * kennen – deshalb ein Halter wie bei `erfolge`.
+     */
+    let arcadeHub: ArcadeLiveHub | null = null;
+    /*
      * Discord-Bot (Pflichtenheft §14a): entsteht erst ganz unten, soll aber
      * Audit-Einträge und Server-Ereignisse schon von hier an sehen. Bis er
      * steht, verwirft die Weiterleitung still.
@@ -916,6 +926,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
        * Handshake – das Frontend erkennt daran „nicht mehr angemeldet".
        */
       liveHub.closeAll(userId, LIVE_CLOSE_CODE_UNAUTHORIZED, 'Sitzung beendet.');
+      // Und der Spielhallen-Kanal (Neubau 26.09.2026), gleicher Close-Code.
+      arcadeHub?.closeAll(userId, ARCADE_LIVE_CLOSE_CODE_UNAUTHORIZED, 'Sitzung beendet.');
     };
 
     await app.register(async (instance) => {
@@ -1115,15 +1127,24 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * Bestenliste je Spiel zusammen. Keine eigene Permission – spielen darf
      * jedes angemeldete Konto, die Zuordnung läuft über die Konto-Id.
      */
-    await registerArcade(app, {
+    const arcadeModule = await registerArcade(app, {
       db,
       resolveUserId: (request) => request.authUser?.id ?? null,
+      resolveViewer: (request) =>
+        request.authUser
+          ? { id: request.authUser.id, displayName: request.authUser.displayName }
+          : null,
+      // Wie am Inbox-Kanal: fehlt der Actor, gilt das Konto als nicht freigeschaltet.
+      isApproved: (request) => request.permissionActor?.approved === true,
+      isSessionValid,
+      allowedOrigin: env.PUBLIC_WEB_URL,
       // Dieselbe Linie wie beim Audit-Log: melden, nicht erwarten. Die Arcade
       // weiß nichts von Abzeichen, sie sagt nur, dass gespielt wurde.
       onScoreSubmitted: (userId, gameId) => {
         void erfolge?.evaluateArcade(userId, gameId);
       },
     });
+    arcadeHub = arcadeModule.hub;
 
     /*
      * Der Zeitgeber (R2/Gefundener Punkt 63) – eine Stelle für beide

@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.4" r="0.8">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="0.5" stop-color="#b45309"/>
+      <stop offset="1" stop-color="#3b1603"/>
+    </radialGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3f12"/>
+      <stop offset="1" stop-color="#3b1a06"/>
+    </linearGradient>
+    <linearGradient id="felt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#166534"/>
+      <stop offset="0.5" stop-color="#14532d"/>
+      <stop offset="1" stop-color="#166534"/>
+    </linearGradient>
+    <radialGradient id="red" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#fecaca"/>
+      <stop offset="0.5" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#7f1d1d"/>
+    </radialGradient>
+    <radialGradient id="blue" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#dbeafe"/>
+      <stop offset="0.5" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1e3a8a"/>
+    </radialGradient>
+    <linearGradient id="die" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e7dcc6"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#bg)"/>
+  <g opacity="0.15" fill="#fff7ed">
+    <circle cx="60" cy="60" r="3"/><circle cx="590" cy="40" r="4"/><circle cx="600" cy="360" r="3"/><circle cx="40" cy="340" r="4"/>
+  </g>
+  <!-- Brett in leichter Draufsicht -->
+  <g transform="translate(320 225) scale(1 0.78)">
+    <rect x="-262" y="-170" width="524" height="340" rx="22" fill="#1c0b02" transform="translate(8 16)"/>
+    <rect x="-262" y="-170" width="524" height="340" rx="22" fill="url(#frame)"/>
+    <rect x="-240" y="-150" width="220" height="300" rx="8" fill="url(#felt)"/>
+    <rect x="20" y="-150" width="220" height="300" rx="8" fill="url(#felt)"/>
+    <g>
+      <path d="M-240 -150 l18 125 l18 -125 Z M-204 -150 l18 125 l18 -125 Z M-168 -150 l18 125 l18 -125 Z M-132 -150 l18 125 l18 -125 Z M-96 -150 l18 125 l18 -125 Z M-60 -150 l18 125 l18 -125 Z" fill="#fcd9a4"/>
+      <path d="M-240 150 l18 -125 l18 125 Z M-204 150 l18 -125 l18 125 Z M-168 150 l18 -125 l18 125 Z M-132 150 l18 -125 l18 125 Z M-96 150 l18 -125 l18 125 Z M-60 150 l18 -125 l18 125 Z" fill="#9a3412"/>
+      <path d="M20 -150 l18 125 l18 -125 Z M56 -150 l18 125 l18 -125 Z M92 -150 l18 125 l18 -125 Z M128 -150 l18 125 l18 -125 Z M164 -150 l18 125 l18 -125 Z M200 -150 l18 125 l18 -125 Z" fill="#9a3412"/>
+      <path d="M20 150 l18 -125 l18 125 Z M56 150 l18 -125 l18 125 Z M92 150 l18 -125 l18 125 Z M128 150 l18 -125 l18 125 Z M164 150 l18 -125 l18 125 Z M200 150 l18 -125 l18 125 Z" fill="#fcd9a4"/>
+    </g>
+    <!-- Steine -->
+    <g stroke="#1c0b02" stroke-opacity="0.4" stroke-width="2">
+      <circle cx="-222" cy="-132" r="16" fill="url(#red)"/><circle cx="-222" cy="-100" r="16" fill="url(#red)"/>
+      <circle cx="-42" cy="132" r="16" fill="url(#blue)"/><circle cx="-42" cy="100" r="16" fill="url(#blue)"/><circle cx="-42" cy="68" r="16" fill="url(#blue)"/>
+      <circle cx="74" cy="-132" r="16" fill="url(#blue)"/><circle cx="74" cy="-100" r="16" fill="url(#blue)"/>
+      <circle cx="218" cy="132" r="16" fill="url(#red)"/><circle cx="218" cy="100" r="16" fill="url(#red)"/><circle cx="218" cy="68" r="16" fill="url(#red)"/><circle cx="218" cy="36" r="16" fill="url(#red)"/>
+      <circle cx="146" cy="132" r="16" fill="url(#red)"/><circle cx="146" cy="100" r="16" fill="url(#red)"/>
+    </g>
+  </g>
+  <!-- Ein geschlagener blauer Stein fliegt verdutzt zur Bar -->
+  <g transform="translate(318 118) rotate(-20)">
+    <path d="M-70 30 q30 -10 52 -24" fill="none" stroke="#fff7ed" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 10" opacity="0.8"/>
+    <ellipse cx="0" cy="0" rx="24" ry="24" fill="url(#blue)" stroke="#1e3a8a" stroke-width="2"/>
+    <circle cx="-8" cy="-4" r="5" fill="#fff"/><circle cx="8" cy="-4" r="5" fill="#fff"/>
+    <circle cx="-7" cy="-3" r="2.4" fill="#0f172a"/><circle cx="9" cy="-3" r="2.4" fill="#0f172a"/>
+    <ellipse cx="0" cy="10" rx="4" ry="5" fill="#0f172a"/>
+  </g>
+  <!-- Zwei Würfel mitten im Wurf -->
+  <g transform="translate(470 92) rotate(18)">
+    <rect x="-34" y="-34" width="68" height="68" rx="14" fill="#1c0b02" opacity="0.35" transform="translate(6 10)"/>
+    <rect x="-34" y="-34" width="68" height="68" rx="14" fill="url(#die)" stroke="#78350f" stroke-width="2"/>
+    <g fill="#7f1d1d"><circle cx="-16" cy="-16" r="6"/><circle cx="16" cy="-16" r="6"/><circle cx="-16" cy="0" r="6"/><circle cx="16" cy="0" r="6"/><circle cx="-16" cy="16" r="6"/><circle cx="16" cy="16" r="6"/></g>
+  </g>
+  <g transform="translate(552 150) rotate(-24)">
+    <rect x="-30" y="-30" width="60" height="60" rx="12" fill="#1c0b02" opacity="0.35" transform="translate(6 10)"/>
+    <rect x="-30" y="-30" width="60" height="60" rx="12" fill="url(#die)" stroke="#78350f" stroke-width="2"/>
+    <g fill="#7f1d1d"><circle cx="-14" cy="-14" r="5.5"/><circle cx="14" cy="-14" r="5.5"/><circle cx="-14" cy="14" r="5.5"/><circle cx="14" cy="14" r="5.5"/></g>
+  </g>
+  <g stroke="#fff7ed" stroke-width="4" stroke-linecap="round" opacity="0.75">
+    <path d="M404 60 l-26 -8"/><path d="M400 88 l-30 2"/><path d="M500 186 l-22 12"/>
+  </g>
+  <!-- Ein roter Stein im Heimfeld jubelt -->
+  <g transform="translate(95 300)">
+    <circle r="30" fill="url(#red)" stroke="#7f1d1d" stroke-width="2"/>
+    <path d="M-12 -6 q5 -6 10 0 M4 -6 q5 -6 10 0" fill="none" stroke="#1f0a0a" stroke-width="3" stroke-linecap="round"/>
+    <path d="M-12 6 Q0 20 12 6 Z" fill="#1f0a0a"/>
+    <path d="M-30 -10 l-18 -24 M30 -10 l18 -24" stroke="#7f1d1d" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

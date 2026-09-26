@@ -26,6 +26,7 @@ COPY apps/frontend/package.json apps/frontend/
 COPY apps/agent/package.json apps/agent/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/validation/package.json packages/validation/
+COPY packages/arcade/package.json packages/arcade/
 RUN pnpm install --frozen-lockfile
 
 

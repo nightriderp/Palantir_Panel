@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1b22"/>
+      <stop offset="0.6" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#0c0c0f"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="0.4" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#fafafa"/>
+      <stop offset="1" stop-color="#a1a1aa"/>
+    </radialGradient>
+    <radialGradient id="moonglow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d4d4d8" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#71717a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="flame" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fbbf24" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a1a1aa"/>
+      <stop offset="1" stop-color="#52525b"/>
+    </linearGradient>
+    <linearGradient id="ghost" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f4f5"/>
+      <stop offset="1" stop-color="#d4d4d8" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="640" height="400" fill="url(#sky)"/>
+  <circle cx="470" cy="110" r="130" fill="url(#moonglow)"/>
+  <circle cx="470" cy="110" r="66" fill="url(#moon)"/>
+  <circle cx="448" cy="92" r="10" fill="#a1a1aa" opacity="0.45"/>
+  <circle cx="496" cy="130" r="14" fill="#a1a1aa" opacity="0.35"/>
+  <circle cx="480" cy="80" r="6" fill="#a1a1aa" opacity="0.4"/>
+  <g fill="#e4e4e7">
+    <circle cx="80" cy="50" r="1.5"/><circle cx="170" cy="30" r="1.2"/><circle cx="260" cy="70" r="1.4"/>
+    <circle cx="350" cy="36" r="1.1"/><circle cx="600" cy="60" r="1.4"/><circle cx="40" cy="130" r="1.1"/>
+  </g>
+
+  <!-- Hügel, kahler Baum -->
+  <path d="M0 330 Q160 280 320 310 T640 300 V400 H0 Z" fill="#18181b"/>
+  <path d="M0 360 Q200 330 400 350 T640 345 V400 H0 Z" fill="#0f0f12"/>
+  <g stroke="#0f0f12" stroke-width="10" stroke-linecap="round" fill="none">
+    <path d="M90 330 L96 200"/>
+    <path d="M95 250 L60 210 L40 214"/>
+    <path d="M95 230 L130 190 L150 196"/>
+    <path d="M96 210 L80 170"/>
+  </g>
+
+  <!-- Grabstein mit eingemeißeltem Fragezeichen -->
+  <g>
+    <path d="M250 330 V210 Q250 160 310 160 Q370 160 370 210 V330 Z" fill="url(#stone)"/>
+    <path d="M250 330 V210 Q250 160 310 160" stroke="#d4d4d8" stroke-width="3" fill="none" opacity="0.5"/>
+    <path d="M288 212 Q288 190 310 190 Q334 190 334 212 Q334 228 316 236 Q310 240 310 252 V260"
+          stroke="#3f3f46" stroke-width="12" fill="none" stroke-linecap="round"/>
+    <circle cx="310" cy="284" r="8" fill="#3f3f46"/>
+    <path d="M262 318 q10 -8 20 0 q10 -8 20 0" stroke="#4d7c0f" stroke-width="4" fill="none"/>
+  </g>
+
+  <!-- Rabe mit Detektivmütze auf dem Grabstein -->
+  <g transform="translate(318 158)">
+    <path d="M-40 0 C-44 -30 -24 -52 4 -50 C22 -64 44 -58 48 -42 L66 -40 L50 -30 C50 -10 36 4 14 6 Z" fill="#09090b"/>
+    <path d="M-40 -2 C-62 -6 -76 4 -84 16 C-66 10 -52 10 -38 8 Z" fill="#18181b"/>
+    <path d="M-10 -10 C-20 -34 -4 -42 12 -36" stroke="#27272a" stroke-width="4" fill="none"/>
+    <circle cx="30" cy="-44" r="6" fill="#fef3c7"/>
+    <circle cx="32" cy="-44" r="3" fill="#09090b"/>
+    <path d="M22 -52 L38 -50" stroke="#fef3c7" stroke-width="2" stroke-linecap="round"/>
+    <path d="M6 -58 Q26 -80 46 -60 Z" fill="#78350f"/>
+    <path d="M0 -58 L52 -58" stroke="#451a03" stroke-width="5" stroke-linecap="round"/>
+    <path d="M20 -74 Q10 -80 4 -72" stroke="#78350f" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M-4 4 L-8 16 M-12 16 L0 16 M14 4 L12 16 M6 16 L18 16" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- Gespenst lugt grinsend hinter dem Stein hervor -->
+  <g transform="translate(392 268)">
+    <path d="M-26 50 V0 Q-26 -34 0 -34 Q26 -34 26 0 V50 L16 42 L6 50 L-4 42 L-14 50 Z" fill="url(#ghost)"/>
+    <ellipse cx="-8" cy="-6" rx="4" ry="6" fill="#18181b"/>
+    <ellipse cx="10" cy="-6" rx="4" ry="6" fill="#18181b"/>
+    <path d="M-10 10 Q0 20 12 10" stroke="#18181b" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M26 6 Q40 0 44 -10" stroke="#e4e4e7" stroke-width="6" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Kerze vorne links -->
+  <g transform="translate(170 300)">
+    <circle cx="0" cy="-44" r="40" fill="url(#flame)"/>
+    <rect x="-14" y="-30" width="28" height="56" rx="4" fill="#e7e5e4"/>
+    <path d="M-14 -22 q8 8 0 16 M14 -20 q-6 6 0 12" stroke="#d6d3d1" stroke-width="4" fill="none"/>
+    <path d="M0 -30 V-38" stroke="#27272a" stroke-width="2"/>
+    <path d="M0 -66 C8 -54 8 -46 0 -40 C-8 -46 -8 -54 0 -66 Z" fill="#f59e0b"/>
+    <path d="M0 -56 C3 -50 3 -46 0 -43 C-3 -46 -3 -50 0 -56 Z" fill="#fef3c7"/>
+    <rect x="-24" y="24" width="48" height="8" rx="4" fill="#3f3f46"/>
+  </g>
+</svg>

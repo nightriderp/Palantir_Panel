@@ -1,42 +1,41 @@
 /**
- * REST-Routen des Arcade-Moduls (Arbeitspaket F8, Pflichtenheft §5 und §17).
+ * REST-Routen der Bestenliste (Arbeitspaket F8, Neubau 26.09.2026).
  *
- * Jede Antwort nutzt den Response-Envelope aus §5.1 über `ok()`/`fail()` – kein
- * lokal geformtes Format (Entwicklungsregeln §3).
+ * Jede Antwort nutzt den Response-Envelope aus §5.1 über `ok()`/`fail()`.
  *
  * Der Bereich kennt keine eigene Permission: Spielen und Bestenliste-Ansehen
- * darf jedes angemeldete Konto. Beide Routen brauchen deshalb nur eine Sitzung
- * (Konto-Id aus B1), nicht ein Recht aus dem Katalog. Ohne Sitzung antworten sie
- * mit `AUTH_REQUIRED` – die sichere Vorgabe, geöffnet wird dadurch nichts.
+ * darf jedes freigeschaltete Konto (`requireApproved()`, security-matrix-06).
+ *
+ * - `GET  /arcade/leaderboard/:gameId` – Bestenliste samt eigener Statistik.
+ * - `POST /arcade/games/:gameId/seed` – Startwert für eine Partie.
+ * - `POST /arcade/scores` – Partie einreichen (**Breaking Change 26.09.2026**:
+ *   vorher `{ gameId, score }`, jetzt Startwert plus Band bzw. Züge).
  */
 
 import { type ApiResponse, ok } from '@palantir/contracts';
-import { arcadeGameIdSchema, submitArcadeScoreInputSchema } from '@palantir/validation';
+import { arcadeGameIdSchema, submitArcadeRunInputSchema } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { accountRateLimit } from '../../lib/abuse-limits.js';
+import { isAppError } from '../../lib/app-error.js';
 import { replyWithErrorCode, requireApproved } from '../rbac/index.js';
 import type { ArcadeService } from './service.js';
 
-const leaderboardParamsSchema = z.object({ gameId: arcadeGameIdSchema });
+const gameParamsSchema = z.object({ gameId: arcadeGameIdSchema });
 
 export interface ArcadeRoutesOptions {
   readonly arcade: ArcadeService;
-  /**
-   * Konto-Id des Aufrufers (Arbeitspaket B1).
-   *
-   * Getrennt vom `PermissionActor`: der Arcade-Bereich braucht die Identität,
-   * keine Rechte.
-   */
+  /** Konto-Id des Aufrufers (Arbeitspaket B1). */
   resolveUserId(request: FastifyRequest): string | null;
 }
 
 /**
- * Wandelt ungültige Eingaben in `VALIDATION_FAILED` – benannter Code, kein
- * Freitext (Entwicklungsregeln §5). Alles Übrige wird weitergeworfen; ein unerwarteter
- * Fehler soll nicht als fachliche Ablehnung erscheinen.
+ * Wandelt ungültige Eingaben in `VALIDATION_FAILED` und fachliche Fehler
+ * (`ArcadeError`, `RbacError`) in ihren Katalog-Code. Alles Übrige wird
+ * weitergeworfen; ein unerwarteter Fehler soll nicht als fachliche Ablehnung
+ * erscheinen.
  */
-async function handleError(reply: FastifyReply, error: unknown): Promise<void> {
+export async function replyWithArcadeError(reply: FastifyReply, error: unknown): Promise<void> {
   if (error instanceof z.ZodError) {
     await replyWithErrorCode(
       reply,
@@ -49,6 +48,12 @@ async function handleError(reply: FastifyReply, error: unknown): Promise<void> {
     return;
   }
 
+  if (isAppError(error) && error.code !== 'INTERNAL_ERROR') {
+    await replyWithErrorCode(reply, error.code, error.message);
+
+    return;
+  }
+
   throw error;
 }
 
@@ -56,80 +61,72 @@ export function registerArcadeRoutes(options: ArcadeRoutesOptions) {
   const { arcade } = options;
 
   /*
-   * Missbrauchsgrenze je Konto (Audit W2-3, `backend-community-14`).
-   *
-   * Der Punktestand ist client-authoritativ – das ist die bewusste
-   * Grundsatzentscheidung dieses Bereichs (siehe `service.ts`). Umso wichtiger
-   * ist, dass er nicht in Schleife eintreffen kann: Jeder POST ist eine Zeile
-   * in `arcade_scores` plus drei Abfragen. Einmal je Registrierung gebaut, nicht
-   * je Request.
+   * Missbrauchsgrenzen je Konto (Audit W2-3, `backend-community-14`). Seit dem
+   * Neubau kostet eine Einsendung zusätzlich eine Nachrechnung im Worker –
+   * umso wichtiger, dass sie nicht in Schleife eintrifft. Einmal je
+   * Registrierung gebaut, nicht je Request.
    */
   const scoreLimit = accountRateLimit({
     scope: 'arcade.score',
     resolveUserId: (request) => options.resolveUserId(request),
   });
+  const seedLimit = accountRateLimit({
+    scope: 'arcade.seed',
+    resolveUserId: (request) => options.resolveUserId(request),
+  });
 
   return async function arcadeRoutes(app: FastifyInstance): Promise<void> {
-    /** Konto-Id des Aufrufers oder `null`, wenn niemand angemeldet ist. */
-    function userIdOf(request: FastifyRequest): string | null {
-      return options.resolveUserId(request);
-    }
+    /** Führt `work` für ein angemeldetes Konto aus und verpackt das Ergebnis. */
+    async function handle<T>(
+      request: FastifyRequest,
+      reply: FastifyReply,
+      work: (userId: string) => Promise<T>,
+    ): Promise<ApiResponse<T> | undefined> {
+      try {
+        const userId = options.resolveUserId(request);
 
-    /*
-     * `requireApproved()` auf beiden Arcade-Routen: Die Spielhalle ist eine
-     * Funktion des Panels, kein Vorraum. Ein Konto, das noch auf die
-     * Freischaltung wartet, soll dort weder Bestenlisten lesen noch Punkte
-     * eintragen (Lastenheft §3.1, security-matrix-06).
-     */
-    app.get(
-      '/arcade/leaderboard/:gameId',
-      { preHandler: requireApproved() },
-      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
-        try {
-          const userId = userIdOf(request);
-
-          if (userId === null) {
-            await replyWithErrorCode(reply, 'AUTH_REQUIRED');
-
-            return undefined;
-          }
-
-          const { gameId } = leaderboardParamsSchema.parse(request.params);
-
-          return ok(await arcade.getLeaderboard(userId, gameId));
-        } catch (error) {
-          await handleError(reply, error);
+        if (userId === null) {
+          await replyWithErrorCode(reply, 'AUTH_REQUIRED');
 
           return undefined;
         }
-      },
+
+        return ok(await work(userId));
+      } catch (error) {
+        await replyWithArcadeError(reply, error);
+
+        return undefined;
+      }
+    }
+
+    app.get('/arcade/leaderboard/:gameId', { preHandler: requireApproved() }, (request, reply) =>
+      handle(request, reply, (userId) => {
+        const { gameId } = gameParamsSchema.parse(request.params);
+
+        return arcade.getLeaderboard(userId, gameId);
+      }),
+    );
+
+    app.post(
+      '/arcade/games/:gameId/seed',
+      { preHandler: [requireApproved(), seedLimit] },
+      (request, reply) =>
+        handle(request, reply, (userId) => {
+          const { gameId } = gameParamsSchema.parse(request.params);
+
+          return arcade.issueSeed(userId, gameId);
+        }),
     );
 
     app.post(
       '/arcade/scores',
-      // Reihenfolge mit Absicht: Erst die Freischaltung, dann der Zähler – ein
-      // Konto in der Warteliste soll nicht das Kontingent eines anderen
-      // beeinflussen und auch keines eigenes verbrauchen.
+      // Erst die Freischaltung, dann der Zähler – ein Konto in der Warteliste
+      // soll kein Kontingent verbrauchen.
       { preHandler: [requireApproved(), scoreLimit] },
-      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
-        try {
-          const userId = userIdOf(request);
-
-          if (userId === null) {
-            await replyWithErrorCode(reply, 'AUTH_REQUIRED');
-
-            return undefined;
-          }
-
-          const input = submitArcadeScoreInputSchema.parse(request.body ?? {});
-
-          return ok(await arcade.submitScore(userId, input));
-        } catch (error) {
-          await handleError(reply, error);
-
-          return undefined;
-        }
-      },
+      (request, reply) =>
+        handle(request, reply, (userId) =>
+          arcade.submitRun(userId, submitArcadeRunInputSchema.parse(request.body ?? {})),
+        ),
     );
   };
 }

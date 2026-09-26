@@ -278,20 +278,25 @@ describe('Konto- und Spielhallen-Abzeichen', () => {
     expect(await pruefe('runden50', arcade, dreissig)).toBe(false);
   });
 
-  it('verlangt für `alleskoenner` jedes Minispiel', async () => {
+  it('verlangt für `alleskoenner` jedes Spiel der Kategorie „Arcade"', async () => {
     const arcade: AchievementTrigger = { kind: 'arcade', gameId: 'kriechpfad' };
+    const alleArcade = {
+      kriechpfad: 1,
+      ballwechsel: 1,
+      steinbrecher: 1,
+      blockstapel: 1,
+      punktejaeger: 1,
+      invaders: 1,
+      flappy: 1,
+    };
 
+    // Brett- und Partyspiele zählen nicht mit – Siege dort gibt es teils nur online.
+    expect(await pruefe('alleskoenner', arcade, { arcadeRounds: alleArcade })).toBe(true);
     expect(
       await pruefe('alleskoenner', arcade, {
-        arcadeRounds: {
-          kriechpfad: 1,
-          ballwechsel: 1,
-          steinbrecher: 1,
-          blockstapel: 1,
-          punktejaeger: 1,
-        },
+        arcadeRounds: { ...alleArcade, flappy: 0, schach: 3, codenames: 1 },
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       await pruefe('alleskoenner', arcade, { arcadeRounds: { kriechpfad: 40, ballwechsel: 40 } }),

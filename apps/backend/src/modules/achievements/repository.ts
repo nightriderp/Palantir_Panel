@@ -15,13 +15,24 @@
  * {@link AchievementQueries.countAuditEntries}.
  */
 
-import { type AchievementId, type AuditAction, isAchievementId } from '@palantir/contracts';
+import {
+  ARCADE_GAMES,
+  type AchievementId,
+  type ArcadeGameId,
+  type AuditAction,
+  isAchievementId,
+} from '@palantir/contracts';
 import { and, asc, countDistinct, count, eq, inArray, lt, ne, notInArray, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
 import { userAchievements } from '../../db/schema/achievements.js';
 import { arcadeScores } from '../../db/schema/arcade.js';
 import { auditLog } from '../../db/schema/admin.js';
 import { users } from '../../db/schema/users.js';
+
+/** Spiele, deren Bestenliste Siege zählt (`metric: 'wins'`). */
+const WINS_GAME_IDS: readonly ArcadeGameId[] = ARCADE_GAMES.filter(
+  (game) => game.metric === 'wins',
+).map((game) => game.id);
 
 /** Ein freigeschaltetes Abzeichen, wie es in der Datenbank steht. */
 export interface UnlockedAchievement {
@@ -92,8 +103,11 @@ export interface AchievementQueries {
   registrationRank(userId: string): Promise<number>;
   /** Anzahl aller abgesendeten Arcade-Versuche eines Kontos. */
   arcadeRoundCount(userId: string): Promise<number>;
-  /** Anzahl der verschiedenen Minispiele, die ein Konto gespielt hat. */
-  arcadeDistinctGames(userId: string): Promise<number>;
+  /**
+   * Anzahl der verschiedenen Spiele aus `gameIds`, in denen das Konto einen
+   * Eintrag hat.
+   */
+  arcadeDistinctGames(userId: string, gameIds: readonly ArcadeGameId[]): Promise<number>;
   /**
    * Bester (kleinster) Platz des Kontos über **alle** Bestenlisten; `null`,
    * wenn es nie gespielt hat.
@@ -252,11 +266,13 @@ export function createDrizzleAchievementRepository(db: Database): AchievementRep
       return Number(row?.anzahl ?? 0);
     },
 
-    async arcadeDistinctGames(userId) {
+    async arcadeDistinctGames(userId, gameIds) {
+      if (gameIds.length === 0) return 0;
+
       const [row] = await db
         .select({ anzahl: countDistinct(arcadeScores.gameId) })
         .from(arcadeScores)
-        .where(eq(arcadeScores.userId, userId));
+        .where(and(eq(arcadeScores.userId, userId), inArray(arcadeScores.gameId, [...gameIds])));
 
       return Number(row?.anzahl ?? 0);
     },
@@ -278,7 +294,15 @@ export function createDrizzleAchievementRepository(db: Database): AchievementRep
             from (
               select ${arcadeScores.gameId} as game_id,
                      ${arcadeScores.userId} as user_id,
-                     max(${arcadeScores.score}) as best
+                     -- Siegspiele zählen die Summe der Siege, alle anderen
+                     -- den besten Stand – dieselbe Regel wie die Bestenliste.
+                     case when ${arcadeScores.gameId} in (${sql.join(
+                       WINS_GAME_IDS.map((id) => sql`${id}`),
+                       sql`, `,
+                     )})
+                       then sum(${arcadeScores.score})
+                       else max(${arcadeScores.score})
+                     end as best
               from ${arcadeScores}
               join ${users} on ${users.id} = ${arcadeScores.userId}
               where ${users.banned} = false

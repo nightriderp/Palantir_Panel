@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7c2d12"/>
+      <stop offset="0.55" stop-color="#d97706"/>
+      <stop offset="1" stop-color="#fcd34d"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff7d6"/>
+      <stop offset="0.6" stop-color="#fde68a" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#fde68a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b7793a"/>
+      <stop offset="0.5" stop-color="#8a5226"/>
+      <stop offset="1" stop-color="#5b3317"/>
+    </linearGradient>
+    <radialGradient id="red" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#fca5a5"/>
+      <stop offset="0.5" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#7f1d1d"/>
+    </radialGradient>
+    <radialGradient id="blue" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#bfdbfe"/>
+      <stop offset="0.5" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1e3a8a"/>
+    </radialGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#92400e"/>
+      <stop offset="1" stop-color="#451a03"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#sky)"/>
+  <circle cx="500" cy="110" r="90" fill="url(#sun)"/>
+  <circle cx="500" cy="110" r="38" fill="#fff4c2"/>
+  <!-- Hügel mit Windmühle: die zweite „Mühle" im Bild -->
+  <path d="M0 250 Q120 170 260 215 T640 200 L640 400 L0 400 Z" fill="url(#hill)" opacity="0.85"/>
+  <g transform="translate(110 150)">
+    <path d="M-22 80 L-14 0 L14 0 L22 80 Z" fill="#fde68a" stroke="#78350f" stroke-width="3"/>
+    <path d="M-18 0 L0 -22 L18 0 Z" fill="#b45309" stroke="#78350f" stroke-width="3"/>
+    <rect x="-6" y="52" width="12" height="28" rx="6" fill="#78350f"/>
+    <g transform="translate(0 -6) rotate(18)" stroke="#78350f" stroke-width="3" fill="#fff7ed">
+      <rect x="-5" y="-78" width="10" height="72" rx="2"/>
+      <rect x="-5" y="6" width="10" height="72" rx="2"/>
+      <rect x="-78" y="-5" width="72" height="10" rx="2"/>
+      <rect x="6" y="-5" width="72" height="10" rx="2"/>
+      <circle r="7" fill="#b45309"/>
+    </g>
+  </g>
+  <!-- Brett, leicht gekippt -->
+  <g transform="translate(345 262) skewX(-14) scale(1 0.62)">
+    <rect x="-190" y="-190" width="380" height="380" rx="26" fill="#3b1d0a" transform="translate(10 18)"/>
+    <rect x="-190" y="-190" width="380" height="380" rx="26" fill="url(#wood)" stroke="#fcd34d" stroke-opacity="0.35" stroke-width="4"/>
+    <g fill="none" stroke="#fde7b0" stroke-width="7" stroke-linecap="round" opacity="0.9">
+      <rect x="-155" y="-155" width="310" height="310"/>
+      <rect x="-105" y="-105" width="210" height="210"/>
+      <rect x="-55" y="-55" width="110" height="110"/>
+      <path d="M0 -155 V-55 M0 55 V155 M-155 0 H-55 M55 0 H155"/>
+    </g>
+    <g fill="#fde7b0">
+      <circle cx="-155" cy="-155" r="9"/><circle cx="0" cy="-155" r="9"/><circle cx="155" cy="-155" r="9"/>
+      <circle cx="155" cy="0" r="9"/><circle cx="155" cy="155" r="9"/><circle cx="0" cy="155" r="9"/>
+      <circle cx="-155" cy="155" r="9"/><circle cx="-155" cy="0" r="9"/>
+      <circle cx="-105" cy="-105" r="9"/><circle cx="105" cy="105" r="9"/><circle cx="-55" cy="55" r="9"/><circle cx="55" cy="-55" r="9"/>
+    </g>
+  </g>
+  <!-- Drei rote Steine in einer Reihe: Mühle! -->
+  <g>
+    <ellipse cx="215" cy="190" rx="34" ry="14" fill="#000" opacity="0.3"/>
+    <ellipse cx="215" cy="180" rx="34" ry="22" fill="url(#red)"/>
+    <ellipse cx="317" cy="190" rx="34" ry="14" fill="#000" opacity="0.3"/>
+    <ellipse cx="317" cy="180" rx="34" ry="22" fill="url(#red)"/>
+    <ellipse cx="420" cy="190" rx="34" ry="14" fill="#000" opacity="0.3"/>
+    <ellipse cx="420" cy="180" rx="34" ry="22" fill="url(#red)"/>
+    <!-- Glitzer über der Mühle -->
+    <g fill="#fff7d6">
+      <path d="M268 132 l5 12 l12 5 l-12 5 l-5 12 l-5 -12 l-12 -5 l12 -5 Z"/>
+      <path d="M372 122 l4 9 l9 4 l-9 4 l-4 9 l-4 -9 l-9 -4 l9 -4 Z"/>
+      <path d="M470 146 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 Z"/>
+    </g>
+    <!-- Der mittlere Stein grinst zufrieden -->
+    <circle cx="305" cy="174" r="4" fill="#1f0a0a"/>
+    <circle cx="329" cy="174" r="4" fill="#1f0a0a"/>
+    <path d="M300 184 Q317 198 334 184" fill="none" stroke="#1f0a0a" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+  <!-- Ein blauer Stein wird vom Brett gehoben und schwitzt -->
+  <g transform="translate(520 250) rotate(-16)">
+    <ellipse cx="0" cy="54" rx="30" ry="9" fill="#000" opacity="0.25"/>
+    <ellipse cx="0" cy="0" rx="34" ry="22" fill="url(#blue)"/>
+    <circle cx="-11" cy="-4" r="4.5" fill="#fff"/>
+    <circle cx="11" cy="-4" r="4.5" fill="#fff"/>
+    <circle cx="-10" cy="-3" r="2.2" fill="#0f172a"/>
+    <circle cx="12" cy="-3" r="2.2" fill="#0f172a"/>
+    <ellipse cx="0" cy="10" rx="5" ry="4" fill="#0f172a"/>
+    <path d="M30 -22 q6 10 0 14 q-6 -4 0 -14 Z" fill="#bae6fd"/>
+    <path d="M-36 -14 q5 8 0 11 q-5 -3 0 -11 Z" fill="#bae6fd"/>
+  </g>
+  <g stroke="#fff7ed" stroke-width="4" stroke-linecap="round" opacity="0.7">
+    <path d="M500 196 l-8 -16"/><path d="M522 190 l0 -18"/><path d="M544 196 l8 -16"/>
+  </g>
+  <g transform="translate(470 330)">
+    <ellipse cx="0" cy="8" rx="30" ry="10" fill="#000" opacity="0.3"/>
+    <ellipse cx="0" cy="0" rx="30" ry="19" fill="url(#blue)"/>
+    <ellipse cx="85" cy="12" rx="30" ry="10" fill="#000" opacity="0.3"/>
+    <ellipse cx="85" cy="4" rx="30" ry="19" fill="url(#red)"/>
+  </g>
+</svg>

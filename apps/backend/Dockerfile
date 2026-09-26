@@ -27,6 +27,7 @@ COPY apps/frontend/package.json apps/frontend/
 COPY apps/agent/package.json apps/agent/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/validation/package.json packages/validation/
+COPY packages/arcade/package.json packages/arcade/
 RUN pnpm install --frozen-lockfile
 
 
@@ -39,7 +40,7 @@ COPY apps/backend ./apps/backend
 # 2026-09-16 Befund 7.1); `--filter @palantir/backend...` baut ihn mit, also
 # muessen seine Quellen im Bau-Kontext liegen. In die Laufzeitstufe kommt er nicht.
 COPY apps/agent ./apps/agent
-# `...` baut die Workspace-Abhängigkeiten (contracts, validation) mit.
+# `...` baut die Workspace-Abhängigkeiten (contracts, validation, arcade) mit.
 RUN pnpm --filter @palantir/backend... build
 
 
@@ -56,6 +57,7 @@ COPY apps/frontend/package.json apps/frontend/
 COPY apps/agent/package.json apps/agent/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/validation/package.json packages/validation/
+COPY packages/arcade/package.json packages/arcade/
 RUN pnpm install --frozen-lockfile --prod --filter @palantir/backend...
 
 
@@ -72,6 +74,9 @@ COPY --from=prod-deps /app ./
 COPY --from=build /app/apps/backend/dist ./apps/backend/dist
 COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=build /app/packages/validation/dist ./packages/validation/dist
+# Spielregeln der Spielhalle: Nachrechnen der Bestenliste und Online-Räume
+# laufen im Backend gegen dieselben Regeln wie im Browser.
+COPY --from=build /app/packages/arcade/dist ./packages/arcade/dist
 
 # Die Migrationen liegen als .sql-Dateien daneben und werden nicht kompiliert.
 # `dist/db/migrate.js` löst den Ordner relativ zur eigenen Datei auf, deshalb

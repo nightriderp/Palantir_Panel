@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c4a6e"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="0.5" stop-color="#0369a1"/>
+      <stop offset="1" stop-color="#082f49"/>
+    </linearGradient>
+    <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#94a3b8"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="hull2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fca5a5"/>
+      <stop offset="1" stop-color="#991b1b"/>
+    </linearGradient>
+    <radialGradient id="boom" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fef9c3"/>
+      <stop offset="0.4" stop-color="#fde047"/>
+      <stop offset="0.75" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#f97316" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#sky)"/>
+  <g fill="#e0f2fe" opacity="0.35">
+    <ellipse cx="120" cy="70" rx="60" ry="16"/><ellipse cx="160" cy="60" rx="40" ry="14"/>
+    <ellipse cx="500" cy="50" rx="70" ry="14"/>
+  </g>
+  <rect y="170" width="640" height="230" fill="url(#sea)"/>
+  <!-- Zielraster auf dem Wasser -->
+  <g stroke="#e0f2fe" stroke-opacity="0.22" stroke-width="2">
+    <path d="M0 200 H640 M0 240 H640 M0 285 H640 M0 335 H640 M0 390 H640"/>
+    <path d="M60 170 L-20 400 M160 170 L120 400 M260 170 L250 400 M360 170 L380 400 M460 170 L510 400 M560 170 L640 400"/>
+  </g>
+  <!-- Blaues Schiff links: sinkt mit Würde -->
+  <g transform="translate(150 232) rotate(-18)">
+    <path d="M-80 0 L80 0 L60 34 L-66 34 Z" fill="url(#hull)"/>
+    <rect x="-30" y="-30" width="54" height="30" rx="4" fill="#cbd5e1"/>
+    <rect x="-8" y="-54" width="14" height="26" fill="#475569"/>
+    <circle cx="-14" cy="-15" r="6" fill="#0f172a"/><circle cx="8" cy="-15" r="6" fill="#0f172a"/>
+    <circle cx="-12" cy="-17" r="2" fill="#fff"/><circle cx="10" cy="-17" r="2" fill="#fff"/>
+    <path d="M-12 -4 Q-2 -10 8 -4" fill="none" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/>
+    <path d="M34 -32 l0 -26 l24 10 l-24 8" fill="#ef4444" stroke="#7f1d1d" stroke-width="2"/>
+  </g>
+  <path d="M40 262 q30 -12 60 0 q30 12 60 0 q30 -12 60 0 q30 12 60 0" fill="none" stroke="#e0f2fe" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  <!-- Treffer! -->
+  <g transform="translate(205 196)">
+    <circle r="70" fill="url(#boom)"/>
+    <path d="M0 -58 L12 -18 L52 -30 L22 0 L56 26 L14 18 L6 60 L-8 20 L-50 34 L-22 2 L-56 -24 L-14 -16 Z" fill="#fde047" stroke="#f97316" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="-54" cy="-50" r="6" fill="#fdba74"/><circle cx="60" cy="-44" r="4" fill="#fde047"/><circle cx="40" cy="54" r="5" fill="#fdba74"/>
+  </g>
+  <!-- Rotes Schiff rechts: frech, mit Fernglas -->
+  <g transform="translate(480 250)">
+    <path d="M-110 0 L110 0 L86 44 L-92 44 Z" fill="url(#hull2)"/>
+    <rect x="-60" y="-38" width="90" height="38" rx="6" fill="#fee2e2"/>
+    <rect x="-20" y="-72" width="20" height="36" fill="#7f1d1d"/>
+    <path d="M-14 -80 q6 -16 18 -10 q10 -14 22 -2" fill="none" stroke="#e2e8f0" stroke-width="7" stroke-linecap="round" opacity="0.8"/>
+    <g transform="translate(-36 -22)">
+      <rect x="-14" y="-7" width="16" height="14" rx="3" fill="#1e293b"/>
+      <rect x="4" y="-7" width="16" height="14" rx="3" fill="#1e293b"/>
+      <circle cx="-6" cy="0" r="4" fill="#38bdf8"/><circle cx="12" cy="0" r="4" fill="#38bdf8"/>
+    </g>
+    <path d="M-2 -14 Q10 -4 22 -14" fill="none" stroke="#7f1d1d" stroke-width="3" stroke-linecap="round"/>
+    <g fill="#fef2f2"><circle cx="-80" cy="22" r="6"/><circle cx="-50" cy="22" r="6"/><circle cx="-20" cy="22" r="6"/><circle cx="10" cy="22" r="6"/><circle cx="40" cy="22" r="6"/></g>
+  </g>
+  <path d="M360 300 q40 -14 80 0 q40 14 80 0 q40 -14 80 0" fill="none" stroke="#e0f2fe" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  <!-- Wasserfontäne eines Fehlschusses -->
+  <g transform="translate(340 330)" fill="#e0f2fe">
+    <path d="M-16 0 Q-12 -46 0 -70 Q12 -46 16 0 Z" opacity="0.9"/>
+    <circle cx="-22" cy="-52" r="6"/><circle cx="20" cy="-60" r="5"/><circle cx="0" cy="-84" r="6"/>
+    <ellipse cx="0" cy="2" rx="34" ry="7" opacity="0.6"/>
+  </g>
+  <!-- Fadenkreuz -->
+  <g transform="translate(560 120)" fill="none" stroke="#fef08a" stroke-width="4" opacity="0.85">
+    <circle r="30"/><circle r="10"/>
+    <path d="M0 -44 V-18 M0 18 V44 M-44 0 H-18 M18 0 H44" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -1,0 +1,213 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fed7aa"/>
+      <stop offset="0.55" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#ea580c"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff7d6"/>
+      <stop offset="0.6" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#fde68a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0ea5b7"/>
+      <stop offset="1" stop-color="#0c4a6e"/>
+    </linearGradient>
+    <radialGradient id="forest" cx="0.4" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#5bc36a"/>
+      <stop offset="1" stop-color="#1f6b35"/>
+    </radialGradient>
+    <radialGradient id="hill" cx="0.4" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#f08a5d"/>
+      <stop offset="1" stop-color="#9c3b1c"/>
+    </radialGradient>
+    <radialGradient id="pasture" cx="0.4" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#c8f08c"/>
+      <stop offset="1" stop-color="#5f9a34"/>
+    </radialGradient>
+    <radialGradient id="field" cx="0.4" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#fbe07a"/>
+      <stop offset="1" stop-color="#c9921c"/>
+    </radialGradient>
+    <radialGradient id="mountain" cx="0.4" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#b8c1cd"/>
+      <stop offset="1" stop-color="#4f5866"/>
+    </radialGradient>
+    <radialGradient id="desert" cx="0.4" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#f6e7b8"/>
+      <stop offset="1" stop-color="#c9a65c"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#431407" flood-opacity="0.35"/>
+    </filter>
+    <path id="hex" d="M0 -52 L45 -26 L45 26 L0 52 L-45 26 L-45 -26 Z"/>
+  </defs>
+
+  <!-- Himmel und Sonne -->
+  <rect width="640" height="400" fill="url(#sky)"/>
+  <circle cx="520" cy="92" r="92" fill="url(#sun)"/>
+  <circle cx="520" cy="92" r="40" fill="#fff4c2"/>
+  <g fill="#fff7ed" opacity="0.85">
+    <ellipse cx="110" cy="70" rx="46" ry="14"/>
+    <ellipse cx="140" cy="60" rx="30" ry="14"/>
+    <ellipse cx="385" cy="48" rx="36" ry="10"/>
+  </g>
+
+  <!-- Meer -->
+  <rect y="238" width="640" height="162" fill="url(#sea)"/>
+  <g fill="none" stroke="#a5f3fc" stroke-width="3" stroke-linecap="round" opacity="0.45">
+    <path d="M20 270 q15 -8 30 0 t30 0"/>
+    <path d="M540 300 q15 -8 30 0 t30 0"/>
+    <path d="M70 360 q15 -8 30 0 t30 0"/>
+    <path d="M470 372 q15 -8 30 0 t30 0"/>
+    <path d="M585 250 q12 -6 24 0"/>
+  </g>
+
+  <!-- Segelboot links -->
+  <g transform="translate(76 292)">
+    <path d="M-34 0 H34 L24 16 H-24 Z" fill="#92400e"/>
+    <path d="M0 -2 V-62" stroke="#451a03" stroke-width="3"/>
+    <path d="M2 -60 L36 -8 H2 Z" fill="#fff7ed"/>
+    <path d="M-2 -52 L-28 -8 H-2 Z" fill="#fdba74"/>
+    <path d="M0 -62 l14 5 l-14 5 Z" fill="#ea580c"/>
+  </g>
+
+  <!-- Die Insel: sieben Felder -->
+  <g filter="url(#soft)">
+    <ellipse cx="320" cy="300" rx="190" ry="44" fill="#e9d8a6" opacity="0.9"/>
+    <g stroke="#6b4423" stroke-opacity="0.35" stroke-width="3" stroke-linejoin="round">
+      <use href="#hex" transform="translate(275 190)" fill="url(#forest)"/>
+      <use href="#hex" transform="translate(365 190)" fill="url(#mountain)"/>
+      <use href="#hex" transform="translate(230 268)" fill="url(#hill)"/>
+      <use href="#hex" transform="translate(320 268)" fill="url(#pasture)"/>
+      <use href="#hex" transform="translate(410 268)" fill="url(#field)"/>
+      <use href="#hex" transform="translate(275 346)" fill="url(#desert)"/>
+      <use href="#hex" transform="translate(365 346)" fill="url(#field)"/>
+    </g>
+  </g>
+
+  <!-- Wald: drei Tannen -->
+  <g transform="translate(275 190)">
+    <rect x="-22" y="4" width="5" height="12" fill="#6b3f1d"/>
+    <path d="M-20 -30 L-4 8 H-36 Z" fill="#14532d"/>
+    <rect x="12" y="6" width="5" height="12" fill="#6b3f1d"/>
+    <path d="M14 -22 L28 10 H0 Z" fill="#166534"/>
+    <rect x="-4" y="16" width="5" height="12" fill="#6b3f1d"/>
+    <path d="M-2 -14 L14 20 H-18 Z" fill="#15803d"/>
+    <path d="M-2 -14 L4 0 H-8 Z" fill="#4ade80"/>
+  </g>
+
+  <!-- Gebirge, dahinter lugt der Räuber hervor -->
+  <g transform="translate(365 190)">
+    <g transform="translate(38 -4)">
+      <path d="M-12 20 Q-13 -2 0 -16 Q13 -2 12 20 Z" fill="#1f2230"/>
+      <circle cx="-3" cy="-4" r="2" fill="#fbbf24"/>
+      <circle cx="4" cy="-4" r="2" fill="#fbbf24"/>
+    </g>
+    <path d="M-40 26 L-10 -22 L20 26 Z" fill="#6b7482"/>
+    <path d="M-16 26 L14 -34 L42 26 Z" fill="#8a94a3"/>
+    <path d="M14 -34 L24 -14 L18 -17 L13 -11 L7 -18 L4 -14 Z" fill="#f8fafc"/>
+    <path d="M-10 -22 L-4 -10 L-9 -12 L-13 -8 L-16 -12 Z" fill="#e2e8f0"/>
+  </g>
+
+  <!-- Hügel: ein wackeliger Ziegelturm -->
+  <g transform="translate(230 268)" stroke="#6d2a12" stroke-width="1.6">
+    <rect x="-26" y="14" width="24" height="12" rx="2" fill="#d2633a"/>
+    <rect x="0" y="14" width="24" height="12" rx="2" fill="#c0512b"/>
+    <rect x="-14" y="1" width="24" height="12" rx="2" fill="#e27a4f"/>
+    <rect x="-9" y="-12" width="24" height="12" rx="2" fill="#d2633a" transform="rotate(-6 3 -6)"/>
+    <rect x="-4" y="-26" width="24" height="12" rx="2" fill="#e27a4f" transform="rotate(9 8 -20)"/>
+  </g>
+
+  <!-- Weide: das grinsende Schaf bietet eine Ähre zum Tausch an -->
+  <g transform="translate(320 262)">
+    <rect x="-16" y="16" width="5" height="14" rx="2" fill="#374151"/>
+    <rect x="10" y="16" width="5" height="14" rx="2" fill="#374151"/>
+    <circle cx="-14" cy="4" r="14" fill="#fbfbf5"/>
+    <circle cx="0" cy="-4" r="16" fill="#ffffff"/>
+    <circle cx="14" cy="6" r="14" fill="#f4f4ec"/>
+    <circle cx="-2" cy="12" r="13" fill="#fafaf2"/>
+    <ellipse cx="26" cy="-10" rx="11" ry="9" fill="#374151"/>
+    <ellipse cx="22" cy="-19" rx="4" ry="2.5" fill="#374151" transform="rotate(-30 22 -19)"/>
+    <circle cx="28" cy="-12" r="3.2" fill="#fff"/>
+    <circle cx="29" cy="-12" r="1.6" fill="#111827"/>
+    <path d="M22 -4 Q28 2 34 -5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    <!-- Ähre im Maul -->
+    <path d="M33 -4 L52 -22" stroke="#b07a12" stroke-width="2"/>
+    <g fill="#f2b631" stroke="#b07a12" stroke-width="0.8">
+      <ellipse cx="51" cy="-23" rx="3" ry="5" transform="rotate(45 51 -23)"/>
+      <ellipse cx="46" cy="-20" rx="3" ry="5" transform="rotate(20 46 -20)"/>
+      <ellipse cx="50" cy="-16" rx="3" ry="5" transform="rotate(70 50 -16)"/>
+    </g>
+  </g>
+
+  <!-- Acker oben rechts -->
+  <g transform="translate(410 268)" stroke="#9a6a10" stroke-width="2" stroke-linecap="round">
+    <path d="M-18 26 V-8 M0 26 V-16 M18 26 V-8" fill="none"/>
+    <g fill="#f2b631" stroke="#b07a12" stroke-width="1">
+      <ellipse cx="-18" cy="-12" rx="4" ry="7"/>
+      <ellipse cx="0" cy="-20" rx="4" ry="7"/>
+      <ellipse cx="18" cy="-12" rx="4" ry="7"/>
+      <ellipse cx="-18" cy="0" rx="4" ry="6"/>
+      <ellipse cx="0" cy="-6" rx="4" ry="6"/>
+      <ellipse cx="18" cy="0" rx="4" ry="6"/>
+    </g>
+  </g>
+
+  <!-- Acker unten rechts: Siedlung mit Stadt -->
+  <g transform="translate(365 346)" stroke="#111827" stroke-width="2" stroke-linejoin="round">
+    <path d="M-30 18 V2 L-20 -8 L-10 2 V18 Z" fill="#3b82f6"/>
+    <path d="M0 18 V-2 L10 -12 L20 -2 V2 H34 V18 Z" fill="#ef4444"/>
+    <rect x="6" y="4" width="6" height="6" fill="#fef3c7" stroke-width="1"/>
+    <rect x="22" y="6" width="6" height="6" fill="#fef3c7" stroke-width="1"/>
+  </g>
+
+  <!-- Wüste: Kaktus mit Sonnenhut -->
+  <g transform="translate(275 346)">
+    <path d="M-34 24 Q-10 6 8 16 T38 18 V28 H-34 Z" fill="#d8b56a"/>
+    <rect x="-6" y="-18" width="10" height="36" rx="5" fill="#4d8f3a"/>
+    <path d="M-6 0 H-14 V-10" stroke="#4d8f3a" stroke-width="7" fill="none" stroke-linecap="round"/>
+    <path d="M4 -6 H12 V-14" stroke="#4d8f3a" stroke-width="7" fill="none" stroke-linecap="round"/>
+    <ellipse cx="-1" cy="-18" rx="12" ry="3" fill="#f59e0b"/>
+    <path d="M-7 -19 Q-1 -30 5 -19 Z" fill="#f59e0b"/>
+  </g>
+
+  <!-- Straßen zwischen den Feldern -->
+  <g stroke-linecap="round">
+    <path d="M320 216 L320 164" stroke="#111827" stroke-width="10"/>
+    <path d="M320 216 L320 164" stroke="#ef4444" stroke-width="6"/>
+    <path d="M365 294 L410 320" stroke="#111827" stroke-width="10"/>
+    <path d="M365 294 L410 320" stroke="#ef4444" stroke-width="6"/>
+  </g>
+
+  <!-- Zwei Würfel purzeln ins Bild -->
+  <g transform="translate(560 318) rotate(-14)">
+    <rect x="-24" y="-24" width="48" height="48" rx="10" fill="#fffbeb" stroke="#92400e" stroke-width="3"/>
+    <circle cx="-11" cy="-11" r="5" fill="#1f2937"/>
+    <circle cx="11" cy="11" r="5" fill="#1f2937"/>
+    <circle cx="0" cy="0" r="5" fill="#1f2937"/>
+  </g>
+  <g transform="translate(508 352) rotate(18)">
+    <rect x="-20" y="-20" width="40" height="40" rx="8" fill="#fffbeb" stroke="#92400e" stroke-width="3"/>
+    <circle cx="-9" cy="-9" r="4.2" fill="#1f2937"/>
+    <circle cx="9" cy="-9" r="4.2" fill="#1f2937"/>
+    <circle cx="-9" cy="9" r="4.2" fill="#1f2937"/>
+    <circle cx="9" cy="9" r="4.2" fill="#1f2937"/>
+  </g>
+
+  <!-- Zahlenchip mit roter Acht, halb im Wasser -->
+  <g transform="translate(150 360)">
+    <ellipse cx="0" cy="8" rx="26" ry="8" fill="#0c4a6e" opacity="0.5"/>
+    <circle r="22" fill="#fdf6e3" stroke="#7c5b33" stroke-width="3"/>
+    <circle cx="-4" cy="-6" r="6" fill="none" stroke="#dc2626" stroke-width="4"/>
+    <circle cx="-4" cy="6" r="7" fill="none" stroke="#dc2626" stroke-width="4"/>
+    <g fill="#dc2626">
+      <circle cx="10" cy="-8" r="1.8"/>
+      <circle cx="10" cy="-2" r="1.8"/>
+      <circle cx="10" cy="4" r="1.8"/>
+      <circle cx="10" cy="10" r="1.8"/>
+      <circle cx="15" cy="1" r="1.8"/>
+    </g>
+  </g>
+</svg>

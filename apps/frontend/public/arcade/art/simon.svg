@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.5" r="0.75">
+      <stop offset="0" stop-color="#3b0d2e"/>
+      <stop offset="1" stop-color="#0a0710"/>
+    </radialGradient>
+    <radialGradient id="g" cx="0.5" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#bbf7d0"/>
+      <stop offset="0.4" stop-color="#4ade80"/>
+      <stop offset="1" stop-color="#15803d"/>
+    </radialGradient>
+    <radialGradient id="r" cx="0.7" cy="0.5" r="0.8">
+      <stop offset="0" stop-color="#b91c1c"/>
+      <stop offset="1" stop-color="#450a0a"/>
+    </radialGradient>
+    <radialGradient id="b" cx="0.5" cy="0.7" r="0.8">
+      <stop offset="0" stop-color="#1d4ed8"/>
+      <stop offset="1" stop-color="#172554"/>
+    </radialGradient>
+    <radialGradient id="y" cx="0.3" cy="0.5" r="0.8">
+      <stop offset="0" stop-color="#ca8a04"/>
+      <stop offset="1" stop-color="#422006"/>
+    </radialGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+  <rect width="640" height="400" fill="url(#bg)"/>
+  <!-- Lichtpunkte -->
+  <g fill="#f472b6" opacity="0.5">
+    <circle cx="70" cy="60" r="3"/>
+    <circle cx="560" cy="80" r="4"/>
+    <circle cx="600" cy="300" r="3"/>
+    <circle cx="40" cy="330" r="4"/>
+    <circle cx="140" cy="200" r="2"/>
+    <circle cx="500" cy="360" r="2"/>
+  </g>
+  <g transform="translate(320 205)">
+    <!-- leuchtendes oberes Feld -->
+    <path d="M-100 -118 A155 155 0 0 1 100 -118 L42 -48 A62 62 0 0 0 -42 -48 Z" fill="#4ade80" filter="url(#blur)" opacity="0.9"/>
+    <path d="M-100 -118 A155 155 0 0 1 100 -118 L42 -48 A62 62 0 0 0 -42 -48 Z" fill="url(#g)" stroke="#fff" stroke-width="3"/>
+    <path d="M118 -100 A155 155 0 0 1 118 100 L48 42 A62 62 0 0 0 48 -42 Z" fill="url(#r)"/>
+    <path d="M100 118 A155 155 0 0 1 -100 118 L-42 48 A62 62 0 0 0 42 48 Z" fill="url(#b)"/>
+    <path d="M-118 100 A155 155 0 0 1 -118 -100 L-48 -42 A62 62 0 0 0 -48 42 Z" fill="url(#y)"/>
+    <circle r="54" fill="#1a0a16" stroke="#f472b6" stroke-width="3"/>
+    <!-- Gesicht in der Mitte: pfeift mit -->
+    <circle cx="-17" cy="-8" r="7" fill="#fdf2f8"/>
+    <circle cx="17" cy="-8" r="7" fill="#fdf2f8"/>
+    <circle cx="-15" cy="-6" r="3.5" fill="#1a0a16"/>
+    <circle cx="19" cy="-6" r="3.5" fill="#1a0a16"/>
+    <ellipse cx="0" cy="22" rx="8" ry="10" fill="#f472b6"/>
+    <!-- Klangwellen -->
+    <g fill="none" stroke="#bbf7d0" stroke-width="4" stroke-linecap="round" opacity="0.8">
+      <path d="M-60 -170 Q0 -196 60 -170"/>
+      <path d="M-40 -190 Q0 -208 40 -190" opacity="0.6"/>
+    </g>
+  </g>
+  <!-- tanzende Noten -->
+  <g fill="#f9a8d4">
+    <ellipse cx="110" cy="130" rx="14" ry="10" transform="rotate(-20 110 130)"/>
+    <rect x="120" y="70" width="5" height="60"/>
+    <path d="M125 70 q24 8 22 30 q-6 -14 -22 -16 z"/>
+    <ellipse cx="520" cy="250" rx="14" ry="10" transform="rotate(-20 520 250)"/>
+    <ellipse cx="570" cy="235" rx="14" ry="10" transform="rotate(-20 570 235)"/>
+    <rect x="530" y="185" width="5" height="62"/>
+    <rect x="580" y="170" width="5" height="62"/>
+    <path d="M530 185 L585 170 L585 182 L530 197 Z"/>
+  </g>
+</svg>
