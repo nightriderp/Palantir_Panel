@@ -15,6 +15,7 @@ import { errorText } from '@/lib/api/client';
 import { applyLiveValues, fetchGameTypes, runLifecycleAction } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { ConfigFields } from '../form/ConfigFields';
+import { EigeneProfile } from './EigeneProfile';
 
 /**
  * Steuerung (Betreiber-Wunsch 23.09.2026): Karte, Modus, Bots und was ein Spiel
@@ -330,6 +331,15 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
       <h3 className="mb-3 text-base font-semibold">Steuerung</h3>
 
       <div className="flex flex-col gap-4">
+        {/* Eigene Profile (Idee P / A2): wählen legt die Werte in den Entwurf. */}
+        <EigeneProfile
+          gameType={spiel.id}
+          entwurf={entwurf}
+          felder={steuerungen.flatMap((steuerung) => steuerung.fields)}
+          onWaehlen={(werte) => setEntwurf((bisher) => ({ ...bisher, ...werte }))}
+          disabled={imUebergang || busy}
+        />
+
         {bloecke.map((block) =>
           block.gruppe === undefined ? (
             <section key={block.key} aria-label={block.titel} className="flex flex-col gap-2">

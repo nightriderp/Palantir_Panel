@@ -18,6 +18,7 @@ export * from './schema/users.js';
 export * from './schema/rbac.js';
 export * from './schema/resources.js';
 export * from './schema/game-requests.js';
+export * from './schema/user-presets.js';
 export * from './schema/game-type-images.js';
 export * from './schema/overview-tiles.js';
 export * from './schema/server-orchestration.js';

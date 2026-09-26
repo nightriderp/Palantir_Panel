@@ -365,6 +365,13 @@
       "when": 1790384442234,
       "tag": "0051_uebersichts_kacheln",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790387667520,
+      "tag": "0052_eigene_profile",
+      "breakpoints": true
     }
   ]
 }
