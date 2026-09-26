@@ -55,6 +55,10 @@ const OHNE_INDEX_MIT_ABSICHT: ReadonlyMap<SpaltenSchluessel, string> = new Map([
     'Die Spalte wird nie gefiltert; die Zeilenzahl begrenzt die Kapazität des Homeservers.',
   ],
   [
+    'overview_tiles.created_by_id',
+    'Kacheln legt ein Administrator an – eine Handvoll Zeilen; gefiltert wird nie nach dem Anlegenden.',
+  ],
+  [
     'uploaded_fonts.uploaded_by_id',
     'Schriften lädt ein Administrator hoch – eine Handvoll Zeilen; gefiltert wird nach der Kennung, nie nach dem Hochladenden.',
   ],
