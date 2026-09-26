@@ -8,16 +8,6 @@
 # ersten Start in den Datenordner (Anwendung 730, anonym).
 ARG BASIS=ghcr.io/nightriderp/palantir-base-steam:6
 
-# **Palantirs eigenes Plugin** (Betreiber 26.09.2026): beendet die Aufwärmphase,
-# sobald ein Spieler da ist, und setzt Spieler beim Beitritt zu CT – beides
-# geht per Konfiguration nicht. Nur die DLL wandert ins Image; das SDK bleibt
-# in dieser Stufe. .NET 10, weil CounterStrikeSharp.API 1.0.374 nur dafür
-# gebaut ist.
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS uebung
-WORKDIR /src
-COPY palantir-uebung/ ./
-RUN dotnet publish -c Release -o /out
-
 FROM ${BASIS}
 USER root
 
@@ -34,7 +24,6 @@ RUN set -eux; \
 
 COPY start.sh plugins.sh plugins.list cs2-gamedata.json retakes-vorgabe.cfg /opt/palantir/
 RUN chmod 0755 /opt/palantir/start.sh
-COPY --from=uebung /out/PalantirUebung.dll /opt/palantir/palantir-uebung/
 
 # **Plugin-Grundlage** (Schritt 7): feste Fassungen mit Prüfsumme. Geholt wird
 # erst beim Start und nur, wenn der Schalter an ist – in den Datenordner, nicht

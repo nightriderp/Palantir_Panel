@@ -445,12 +445,8 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     starte(aus, { CS2_ENDLESS_ROUND: 'true' });
 
     const cfgAn = datei(an, 'palantir.cfg');
-    // Nicht mehr `mp_warmup_online_enabled 0` – das fror die Uhr bei 2:00 ein.
-    assert.doesNotMatch(cfgAn, /mp_warmup_online_enabled|mp_warmup_end/u);
-    assert.match(cfgAn, /^mp_warmuptime 5$/mu);
-    assert.match(cfgAn, /^palantir_skip_warmup 1$/mu);
-    // „Alle verbunden“ spammte den Chat (v2.4.41).
-    assert.doesNotMatch(cfgAn, /mp_endwarmup_player_count|all_players_connected/u);
+    assert.match(cfgAn, /^mp_warmup_online_enabled 0$/mu);
+    assert.match(cfgAn, /^mp_warmup_end$/mu);
     assert.match(cfgAn, /^mp_freezetime 0$/mu);
     assert.match(cfgAn, /^mp_respawn_on_death_t 1$/mu);
     assert.match(cfgAn, /^mp_respawnwavetime_ct 0$/mu);
@@ -460,34 +456,6 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.doesNotMatch(cfgAus, /mp_respawn_on_death|mp_freezetime|mp_warmup/u);
     // Keine Teamzuweisung mehr – Valves Teammenü.
     assert.doesNotMatch(cfgAn, /mp_force_pick_time|mp_join_grace_time|mp_force_assign_teams/u);
-  });
-
-  it('schreibt die Übungs-Einstellungen und Nur CT – aus setzt nur Modus-Freies zurück', () => {
-    const an = arbeitsordner();
-    const aus = arbeitsordner();
-    starte(an, { CS2_PRACTICE: 'true', CS2_CT_ONLY: 'true' });
-    starte(aus);
-
-    const cfgAn = datei(an, 'palantir.cfg');
-    assert.match(cfgAn, /^sv_cheats 1$/mu);
-    assert.match(cfgAn, /^exec palantir_uebung_an$/mu);
-    // CT ohne Sperre über Palantirs Plugin – `mp_humanteam ct` hielt Spieler fest.
-    assert.match(cfgAn, /^palantir_join_ct 1$/mu);
-    assert.match(cfgAn, /^mp_force_pick_time 1$/mu);
-    assert.doesNotMatch(cfgAn, /mp_humanteam/u);
-    assert.doesNotMatch(datei(aus, 'palantir.cfg'), /palantir_uebung|mp_humanteam/u);
-
-    const uebungAn = datei(aus, 'palantir_uebung_an.cfg');
-    assert.match(uebungAn, /^mp_timelimit 0$/mu);
-    // Keine Puppen-Bots mehr, dafür die Übungsbefehle des Plugins (26.09.2026).
-    assert.doesNotMatch(uebungAn, /bot_stop|bot_zombie/u);
-    assert.match(uebungAn, /^palantir_practice 1$/mu);
-    assert.match(uebungAn, /^sv_regeneration_force_on 1$/mu);
-    const uebungAus = datei(aus, 'palantir_uebung_aus.cfg');
-    assert.match(uebungAus, /^bot_stop 0$/mu);
-    assert.match(uebungAus, /^palantir_practice 0$/mu);
-    // Was ein Modus selbst setzt, bleibt ihm überlassen.
-    assert.doesNotMatch(uebungAus, /mp_free_armor|mp_death_drop_gun|mp_timelimit|mp_limitteams/u);
   });
 
   it('lehnt einen Training-Schalter ab, der weder true noch false ist', () => {
@@ -645,42 +613,6 @@ describe('start.sh – Schritt 6: Updates zurückhalten', nurMitShell, () => {
 
     assert.ok(steamcmdLief(starte(ordner)));
     assert.ok(steamcmdLief(starte(ordner, { PALANTIR_UPDATES_HALTEN: 'ja' })));
-  });
-});
-
-describe('Palantirs eigenes Plugin (26.09.2026)', () => {
-  it('baut gegen dieselbe CounterStrikeSharp-Fassung, die das Image lädt', () => {
-    const dockerfile = readFileSync(join(HIER, 'Dockerfile'), 'utf8');
-    const projekt = readFileSync(join(HIER, 'palantir-uebung', 'PalantirUebung.csproj'), 'utf8');
-    const geladen = /CS2_CSS_VERSION=v([\d.]+)/u.exec(dockerfile)?.[1];
-    const gebaut = /Include="CounterStrikeSharp\.API" Version="([\d.]+)"/u.exec(projekt)?.[1];
-
-    assert.ok(geladen);
-    assert.equal(gebaut, geladen);
-    assert.match(dockerfile, /^COPY --from=uebung \/out\/PalantirUebung\.dll /mu);
-  });
-
-  it('legt das Plugin mit der Grundlage hin – ohne Grundlage nicht', nurMitShell, () => {
-    const mit = arbeitsordner();
-    const ohne = arbeitsordner();
-    const dll = join(mit.daten, 'PalantirUebung.dll');
-    const liste = join(mit.daten, 'leer.list');
-    mkdirSync(mit.daten, { recursive: true });
-    writeFileSync(dll, 'dll');
-    writeFileSync(liste, '');
-
-    const lauf = starte(mit, {
-      CS2_PLUGINS: 'true',
-      ...grundlageAttrappe(mit),
-      PALANTIR_CS2_PLUGINLISTE: posix(liste),
-      PALANTIR_UEBUNG_PLUGIN: posix(dll),
-    });
-    starte(ohne, { PALANTIR_UEBUNG_PLUGIN: posix(dll) });
-
-    const ziel = ['server', 'game', 'csgo', 'addons', 'counterstrikesharp', 'plugins'];
-    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
-    assert.ok(existsSync(join(mit.daten, ...ziel, 'PalantirUebung', 'PalantirUebung.dll')));
-    assert.ok(!existsSync(join(ohne.daten, ...ziel, 'PalantirUebung')));
   });
 });
 

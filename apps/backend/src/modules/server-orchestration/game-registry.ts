@@ -3429,8 +3429,6 @@ const CS2_KARTEN = [
  * das Spielmodus-Plugin. Nicht genannte Felder bleiben, wie sie sind.
  */
 const TRAINING_AUS = {
-  practicePack: false,
-  ctOnly: false,
   skipWarmup: false,
   noFreezeTime: false,
   instantRespawn: false,
@@ -3455,16 +3453,11 @@ const CS2_PROFILE: GamePreset[] = [
     id: 'utility',
     label: 'Übung / Inspect',
     description:
-      'Üben und Waffen ansehen im Custom-Modus: Einstellungen wie die Workshop-Map „Dust 2 Utility“, Beitritt als CT, keine Bots, keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera. Im Chat: !spawn, !tspawn, !ctspawn, !save, !back. Mit MetaMod (Palantirs Plugin).',
+      'Üben und Waffen ansehen: keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera, keine Bots.',
     values: {
-      gameMode: 'custom',
-      // MetaMod für Palantirs Plugin: Aufwärmphase weg beim Beitritt, CT ohne Sperre.
-      plugins: true,
+      gameMode: 'competitive',
       modePlugin: 'none',
-      // Keine Bots (Betreiber 26.09.2026) – zu den Spawns geht es per Chat.
       bots: 0,
-      practicePack: true,
-      ctOnly: true,
       skipWarmup: true,
       noFreezeTime: true,
       instantRespawn: true,
@@ -3518,7 +3511,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.35',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.36',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3710,33 +3703,6 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       lockedAfterCreate: false,
     },
     // Training (Betreiber 25.09.2026) – Schalter für Übungsserver.
-    {
-      key: 'practicePack',
-      label: 'Übungs-Einstellungen',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Befehle der Workshop-Map „Dust 2 Utility“ für jede Karte: kein Zeitlimit, Leben regeneriert, kein Fallschaden, keine Ausdauer, Bunnyhop, Ping ohne Wartezeit, Flugbahn 8 s, Rüstung. Mit MetaMod dazu Chat-Befehle: !spawn, !tspawn <n>, !ctspawn <n>, !spawns, !save, !back. Schaltet sv_cheats ein.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      // Kennung bleibt `ctOnly` (gespeicherte Server); seit 26.09.2026 ohne Sperre.
-      key: 'ctOnly',
-      label: 'Beitritt als CT',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Spieler landen beim Beitritt direkt bei CT; wechseln geht jederzeit mit M. Braucht MetaMod – ohne teilt das Spiel nach 1 s selbst ein Team zu.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
     {
       key: 'skipWarmup',
       label: 'Aufwärmphase überspringen',
@@ -3947,8 +3913,6 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     bots: 'CS2_BOTS',
     workshopMap: 'CS2_WORKSHOP_MAP',
     allRounds: 'CS2_ALL_ROUNDS',
-    practicePack: 'CS2_PRACTICE',
-    ctOnly: 'CS2_CT_ONLY',
     skipWarmup: 'CS2_SKIP_WARMUP',
     noFreezeTime: 'CS2_NO_FREEZETIME',
     instantRespawn: 'CS2_INSTANT_RESPAWN',
@@ -3975,8 +3939,6 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'bots',
     'workshopMap',
     'allRounds',
-    'practicePack',
-    'ctOnly',
     'skipWarmup',
     'noFreezeTime',
     'instantRespawn',
@@ -4071,48 +4033,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
      * zurück auf 0 geht es mit dem nächsten Start (`palantir.cfg`).
      */
     {
-      // Befehle der Workshop-Map „Dust 2 Utility“ (Betreiber 25.09.2026) –
-      // stehen in `palantir_uebung_an/aus.cfg` aus dem Image.
-      id: 'practicePack',
-      label: 'Übungs-Einstellungen',
-      group: 'Training',
-      fields: ['practicePack'],
-      commands: ['{practicePack}'],
-      values: {
-        practicePack: {
-          true: 'exec palantir_uebung_an',
-          false: 'exec palantir_uebung_aus',
-        },
-      },
-      persist: ['{practicePack}'],
-    },
-    {
-      // Palantirs Plugin setzt Spieler beim Beitritt zu CT (`palantir_join_ct`),
-      // ohne Sperre – `mp_humanteam ct` hielt sie dort fest (v2.4.41/42) und
-      // wird hier auf `any` zurückgenommen. `mp_force_pick_time` setzen alle
-      // Valve-Modi auf 15 außer Custom.
-      id: 'ctOnly',
-      label: 'Beitritt als CT',
-      group: 'Training',
-      fields: ['ctOnly'],
-      commands: ['{ctOnly}'],
-      values: {
-        ctOnly: {
-          true: 'palantir_join_ct 1; mp_humanteam any; mp_force_pick_time 1',
-          false: 'palantir_join_ct 0; mp_humanteam any; mp_force_pick_time 15',
-        },
-      },
-      persist: ['{ctOnly}'],
-    },
-    {
-      // Die Aufwärmphase beginnt erst mit dem ersten Spieler – ein Befehl beim
-      // Kartenladen liefe ins Leere. Darum die kürzeste Zeit, die CS2 zulässt
-      // (5 s); live beendet `mp_warmup_end` eine laufende. `online_enabled 0`
-      // fror die Uhr bei 2:00 ein, „alle verbunden“ spammte den Chat (v2.4.41).
-      // Aus stellt die Aufwärmzeit nicht zurück – das tut der Modus beim
-      // nächsten Kartenwechsel; `mp_endwarmup_player_count 0` räumt v2.4.41 auf.
-      // Mit MetaMod beendet Palantirs Plugin sie, sobald jemand da ist
-      // (`palantir_skip_warmup`, 26.09.2026).
+      // `mp_warmup_end` beendet eine schon laufende; ohne `online_enabled`
+      // beginnt keine neue. Aus: Valves Vorgabe, wirkt ab dem nächsten Kartenwechsel.
       id: 'skipWarmup',
       label: 'Aufwärmphase überspringen',
       group: 'Training',
@@ -4120,8 +4042,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       commands: ['{skipWarmup}'],
       values: {
         skipWarmup: {
-          true: 'palantir_skip_warmup 1; mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 0; mp_warmuptime 5; mp_warmup_end',
-          false: 'palantir_skip_warmup 0; mp_warmup_online_enabled 1; mp_endwarmup_player_count 0',
+          true: 'mp_warmup_online_enabled 0; mp_warmup_end',
+          false: 'mp_warmup_online_enabled 1',
         },
       },
       persist: ['{skipWarmup}'],
