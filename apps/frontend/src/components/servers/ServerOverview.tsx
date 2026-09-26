@@ -122,12 +122,15 @@ export function ServerOverview() {
 
     const begriff = search.trim().toLocaleLowerCase('de');
 
+    // Verwalter bekommen auch ausgeschaltete Kacheln geliefert – in der
+    // Übersicht zählen nur eingeschaltete, für alle gleich.
     return (kacheln.data ?? []).filter(
       (tile) =>
-        begriff === '' ||
-        [tile.title, tile.subtitle, tile.gameLabel, tile.address]
-          .filter((wert): wert is string => wert !== null)
-          .some((wert) => wert.toLocaleLowerCase('de').includes(begriff)),
+        tile.enabled &&
+        (begriff === '' ||
+          [tile.title, tile.subtitle, tile.gameLabel, tile.address]
+            .filter((wert): wert is string => wert !== null)
+            .some((wert) => wert.toLocaleLowerCase('de').includes(begriff))),
     );
   }, [kacheln.data, filter, search]);
   const { pinnedIds, isPinned, togglePin } = usePinnedServers(servers.data ?? []);

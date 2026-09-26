@@ -19,6 +19,7 @@ export function tileRecord(overrides: Partial<OverviewTileRecord> = {}): Overvie
     linkUrl: 'https://discord.gg/asa',
     linkLabel: 'ASA Discord',
     sortOrder: 0,
+    enabled: true,
     createdById: null,
     createdAt: new Date('2026-09-26T10:00:00.000Z'),
     updatedAt: new Date('2026-09-26T10:00:00.000Z'),

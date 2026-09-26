@@ -56,6 +56,7 @@ describe('createOverviewTileService', () => {
       linkUrl: null,
       linkLabel: null,
       sortOrder: 2,
+      enabled: true,
     });
 
     expect(tile.title).toBe('BHOP');
@@ -76,6 +77,7 @@ describe('createOverviewTileService', () => {
         linkUrl: null,
         linkLabel: null,
         sortOrder: 0,
+        enabled: true,
       }),
     ).rejects.toSatisfy((error) => isOverviewTileError(error) && error.code === 'NOT_FOUND');
   });
@@ -101,6 +103,19 @@ describe('createOverviewTileService', () => {
     await expect(dienst.remove('ffffffff-ffff-4fff-8fff-ffffffffffff')).rejects.toSatisfy(
       (error) => isOverviewTileError(error) && error.code === 'NOT_FOUND',
     );
+  });
+
+  it('liefert ausgeschaltete Kacheln nur an Verwalter', async () => {
+    const { service: dienst } = service([
+      tileRecord({ id: 'a', title: 'An' }),
+      tileRecord({ id: 'b', title: 'Aus', enabled: false }),
+    ]);
+
+    expect((await dienst.list(actorWith())).map((tile) => tile.title)).toEqual(['An']);
+    expect((await dienst.list(actorWith('instance.manage'))).map((tile) => tile.title)).toEqual([
+      'An',
+      'Aus',
+    ]);
   });
 
   it('entfernt eine Kachel', async () => {

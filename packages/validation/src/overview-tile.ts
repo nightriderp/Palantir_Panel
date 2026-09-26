@@ -157,6 +157,8 @@ export const createOverviewTileInputSchema = z
     linkUrl: overviewTileLinkUrlSchema.default(null),
     linkLabel: overviewTileLinkLabelSchema.default(null),
     sortOrder: overviewTileSortOrderSchema.default(0),
+    /** Neue Kacheln sind eingeschaltet – wer eine anlegt, will sie sehen. */
+    enabled: z.boolean().default(true),
   })
   .strict();
 
@@ -171,6 +173,7 @@ export const updateOverviewTileInputSchema = z
     linkUrl: overviewTileLinkUrlSchema.optional(),
     linkLabel: overviewTileLinkLabelSchema.optional(),
     sortOrder: overviewTileSortOrderSchema.optional(),
+    enabled: z.boolean().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

@@ -40,6 +40,7 @@ describe('createOverviewTileInputSchema', () => {
       linkUrl: null,
       linkLabel: null,
       sortOrder: 0,
+      enabled: true,
     });
   });
 

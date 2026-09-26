@@ -14,6 +14,7 @@ import {
 import { createOverviewTileInputSchema } from '@palantir/validation';
 import { useMemo, useState } from 'react';
 import {
+  Badge,
   Button,
   DangerConfirmDialog,
   FormModal,
@@ -72,6 +73,28 @@ export function KachelnView() {
   const [editor, setEditor] = useState<Editor>(null);
   const [toDelete, setToDelete] = useState<OverviewTileDto | null>(null);
   const [busy, setBusy] = useState(false);
+  const [schaltend, setSchaltend] = useState<string | null>(null);
+
+  /**
+   * Ein- oder ausschalten (Betreiber-Wunsch 26.09.2026): Die Kachel
+   * verschwindet aus der Übersicht, bleibt aber hier stehen – mit allem, was
+   * eingetragen war. Löschen ist der andere Knopf.
+   */
+  async function umschalten(tile: OverviewTileDto) {
+    setSchaltend(tile.id);
+    const result = await updateOverviewTile(tile.id, { enabled: !tile.enabled });
+    setSchaltend(null);
+    if (result.success) {
+      toast.success(
+        result.data.enabled
+          ? `Kachel „${tile.title}" eingeschaltet.`
+          : `Kachel „${tile.title}" ausgeschaltet – sie steht nicht mehr in der Übersicht.`,
+      );
+      resource.reload();
+    } else {
+      toast.error(errorText(result));
+    }
+  }
 
   async function confirmDelete() {
     if (!toDelete) return;
@@ -134,10 +157,25 @@ export function KachelnView() {
                   gameIconUrl={spiel?.iconUrl ?? null}
                   gameCoverUrl={spiel?.coverImageUrl ?? null}
                   gameTypeName={spiel?.name ?? null}
+                  // Ausgeschaltet: gedämpft, damit man es auf einen Blick sieht.
+                  className={tile.enabled ? undefined : 'opacity-50'}
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-ink-faint">
-                  <span>Reihenfolge {tile.sortOrder}</span>
+                  <span className="flex items-center gap-2">
+                    <span>Reihenfolge {tile.sortOrder}</span>
+                    {tile.enabled ? null : <Badge tone="warning">Ausgeschaltet</Badge>}
+                  </span>
                   <span className="flex gap-2">
+                    {tile.permissions.canEdit ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={schaltend === tile.id}
+                        onClick={() => void umschalten(tile)}
+                      >
+                        {tile.enabled ? 'Ausschalten' : 'Einschalten'}
+                      </Button>
+                    ) : null}
                     {tile.permissions.canEdit ? (
                       <Button
                         variant="secondary"
@@ -239,6 +277,9 @@ function KachelEditor({
     linkUrl: linkUrl || null,
     linkLabel: linkLabel || null,
     sortOrder: sortOrder ?? 0,
+    // Der Schalter hat seinen eigenen Knopf in der Liste; das Formular
+    // lässt ihn, wie er ist (neu: an).
+    enabled: initial?.enabled ?? true,
   };
   const pruefung = createOverviewTileInputSchema.safeParse(eingabe);
   const feldfehler = new Map<string, string>();
