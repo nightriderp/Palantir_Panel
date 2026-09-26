@@ -1343,6 +1343,25 @@ export const ERROR_CATALOG = {
     defaultMessage:
       'Konsolenbefehle über Discord sind für diesen Server abgeschaltet. Einschalten lässt sich das in den Server-Einstellungen im Panel.',
   },
+  /** Eigenes Profil gibt es nicht oder es gehört einem anderen Konto (Idee P / A2). 404. */
+  USER_PRESET_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieses Profil gibt es nicht.',
+  },
+  /** Ein eigenes Profil dieses Namens gibt es für das Spiel schon. 409. */
+  USER_PRESET_NAME_TAKEN: {
+    httpStatus: 409,
+    defaultMessage: 'Ein Profil mit diesem Namen gibt es schon.',
+  },
+  /**
+   * Zu viele eigene Profile für dieses Spiel (`USER_PRESET_LIMIT`). 409 –
+   * ein altes löschen oder überschreiben hilft.
+   */
+  USER_PRESET_LIMIT_REACHED: {
+    httpStatus: 409,
+    defaultMessage:
+      'Mehr eigene Profile gehen für dieses Spiel nicht. Lösche oder überschreibe ein altes.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */
