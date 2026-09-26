@@ -322,6 +322,13 @@ export {
   uploadFontInputSchema,
 } from './font.js';
 export {
+  type CreateOverviewTileInput,
+  type UpdateOverviewTileInput,
+  createOverviewTileInputSchema,
+  overviewTileParamsSchema,
+  updateOverviewTileInputSchema,
+} from './overview-tile.js';
+export {
   type SubmitArcadeScoreInput,
   arcadeGameIdSchema,
   arcadeScoreValueSchema,

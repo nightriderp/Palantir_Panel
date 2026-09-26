@@ -82,6 +82,8 @@ export * from './instance.js';
 // Schriften der Oberfläche (Lastenheft §3.10): Formate, Grenzen und Kennungen
 // der mitgelieferten und hochgeladenen Schriften.
 export * from './font.js';
+// Übersichts-Kacheln ohne Server (Betreiber-Wunsch 26.09.2026).
+export * from './overview-tile.js';
 export * from './panel-backup.js';
 export * from './game-request.js';
 export * from './quota-request.js';
