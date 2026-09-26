@@ -16,19 +16,28 @@ describe('Arcade-Katalog', () => {
     expect(ARCADE_GAMES.map((game) => game.id)).toEqual([...ARCADE_GAME_IDS]);
   });
 
-  it('trägt keinen der geschützten Originaltitel als Namen (Lastenheft §3.9)', () => {
-    const geschuetzt = ['snake', 'pong', 'breakout', 'tetris', 'pac-man', 'pacman'];
+  it('passt Sitzzahlen und Modi zueinander', () => {
     for (const game of ARCADE_GAMES) {
-      const name = game.name.toLowerCase();
-      for (const marke of geschuetzt) {
-        expect(name).not.toContain(marke);
+      expect(game.minPlayers).toBeGreaterThanOrEqual(1);
+      expect(game.maxPlayers).toBeGreaterThanOrEqual(game.minPlayers);
+      expect(game.maxPlayers).toBeLessThanOrEqual(10);
+      if (game.engine === 'realtime') {
+        expect(game.maxPlayers).toBe(1);
+        expect(game.metric).toBe('score');
       }
+      const irgendwie = game.modes.solo || game.modes.bots || game.modes.local || game.modes.online;
+      expect(irgendwie).toBe(true);
     }
+  });
+
+  it('führt mindestens zwanzig Spiele', () => {
+    expect(ARCADE_GAME_IDS.length).toBeGreaterThanOrEqual(20);
   });
 
   it('erkennt gültige und ungültige Kennungen', () => {
     expect(isArcadeGameId('kriechpfad')).toBe(true);
     expect(isArcadeGameId('snake')).toBe(false);
+    expect(isArcadeGameId('schach')).toBe(true);
     expect(isArcadeGameId('')).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ARCADE_GAME_IDS } from '@palantir/contracts';
-import { ARCADE_GAME_REGISTRY, getArcadeGame } from './index';
+import { getArcadeGame, isPlayableHere } from './index';
 import { kriechpfad } from './kriechpfad';
 import { blockstapel } from './blockstapel';
 import { punktejaeger } from './punktejaeger';
@@ -12,8 +12,12 @@ function constantRandom(value: number): () => number {
 }
 
 describe('Arcade-Registry', () => {
-  it('führt genau ein Spiel je Katalog-Kennung', () => {
-    for (const id of ARCADE_GAME_IDS) {
+  // Übergang: Der Katalog kennt schon alle Spiele, diese Oberfläche nur fünf.
+  const hier = ARCADE_GAME_IDS.filter((id) => isPlayableHere(id));
+
+  it('führt die fünf Spiele dieser Oberfläche', () => {
+    expect(hier).toHaveLength(5);
+    for (const id of hier) {
       const game = getArcadeGame(id);
       expect(game.id).toBe(id);
       expect(typeof game.instructions).toBe('string');
@@ -21,8 +25,8 @@ describe('Arcade-Registry', () => {
   });
 
   it('jedes Spiel startet in der Phase „ready" mit Punktestand 0', () => {
-    for (const id of ARCADE_GAME_IDS) {
-      const game = ARCADE_GAME_REGISTRY[id];
+    for (const id of hier) {
+      const game = getArcadeGame(id);
       const state = game.create(constantRandom(0));
       expect(game.phase(state)).toBe('ready');
       expect(game.score(state)).toBe(0);

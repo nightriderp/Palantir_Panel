@@ -1362,6 +1362,62 @@ export const ERROR_CATALOG = {
     defaultMessage:
       'Mehr eigene Profile gehen für dieses Spiel nicht. Lösche oder überschreibe ein altes.',
   },
+  // -- Spielhalle (Neubau 26.09.2026) ------------------------------------------
+
+  /** Startwert unbekannt, schon verbraucht, abgelaufen oder für ein anderes Spiel/Konto. */
+  ARCADE_SEED_INVALID: {
+    httpStatus: 409,
+    defaultMessage:
+      'Diese Partie lässt sich nicht mehr einreichen – der Startwert ist abgelaufen oder schon verwendet.',
+  },
+  /** Band oder Zugfolge ließ sich nicht nachrechnen (Unfug, andere Regelfassung, unbeendet). */
+  ARCADE_REPLAY_INVALID: {
+    httpStatus: 422,
+    defaultMessage: 'Die Partie ließ sich nicht nachrechnen und wird nicht gewertet.',
+  },
+  ARCADE_ROOM_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diesen Spielraum gibt es nicht (mehr).',
+  },
+  ARCADE_ROOM_FULL: {
+    httpStatus: 409,
+    defaultMessage: 'In diesem Raum ist kein Platz mehr frei.',
+  },
+  /** Aktion passt nicht zum Zustand des Raums (z. B. Starten einer laufenden Partie). */
+  ARCADE_ROOM_STATE: {
+    httpStatus: 409,
+    defaultMessage: 'Das geht in diesem Raum gerade nicht.',
+  },
+  /** Zug gegen eine veraltete Fassung des Raums – neu laden und noch einmal. */
+  ARCADE_ROOM_VERSION_CONFLICT: {
+    httpStatus: 409,
+    defaultMessage: 'Inzwischen hat sich im Raum etwas getan. Die Ansicht wird aktualisiert.',
+  },
+  ARCADE_NOT_YOUR_TURN: {
+    httpStatus: 409,
+    defaultMessage: 'Du bist gerade nicht am Zug.',
+  },
+  /** Zug unlesbar oder nach den Regeln nicht erlaubt; die Meldung nennt den Grund. */
+  ARCADE_MOVE_INVALID: {
+    httpStatus: 422,
+    defaultMessage: 'Dieser Zug ist nicht erlaubt.',
+  },
+  ARCADE_ROOM_LIMIT: {
+    httpStatus: 429,
+    defaultMessage: 'Du leitest schon genug offene Räume. Schließ erst einen davon.',
+  },
+  ARCADE_TRACK_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieses Musikstück gibt es nicht (mehr).',
+  },
+  ARCADE_TRACK_INVALID: {
+    httpStatus: 422,
+    defaultMessage: 'Das ist keine unterstützte Audiodatei (MP3, OGG oder WAV).',
+  },
+  ARCADE_TRACK_TOO_LARGE: {
+    httpStatus: 413,
+    defaultMessage: 'Das Musikstück ist zu groß (höchstens 8 MB).',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

@@ -1,12 +1,19 @@
 'use client';
 
-import { ARCADE_GAMES, type ArcadeGameId, type ArcadeLeaderboardDto } from '@palantir/contracts';
+import {
+  ARCADE_GAMES as CATALOG,
+  type ArcadeGameId,
+  type ArcadeLeaderboardDto,
+} from '@palantir/contracts';
 import { useState } from 'react';
 import { Icon, PageHeader, Panel } from '@/components/shared';
 import { fetchArcadeLeaderboard } from '@/lib/arcade/api';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { GameCard } from './GameCard';
 import { GameScreen } from './GameScreen';
+import { isPlayableHere } from './games/index';
+
+const ARCADE_GAMES = CATALOG.filter((game) => isPlayableHere(game.id));
 
 /**
  * Arcade – Auswahl und Spielbildschirm (Arbeitspaket F8, Lastenheft §3.9).
