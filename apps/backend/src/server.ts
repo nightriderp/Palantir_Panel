@@ -47,6 +47,9 @@ import { createGameRequestService } from './modules/game-requests/index.js';
 import { createGameTypeImageService } from './modules/game-type-images/index.js';
 import { createDrizzleGameTypeImageRepository } from './modules/game-type-images/repository.js';
 import { registerGameTypeImageRoutes } from './modules/game-type-images/routes.js';
+import { createOverviewTileService } from './modules/overview-tiles/index.js';
+import { createDrizzleOverviewTileRepository } from './modules/overview-tiles/repository.js';
+import { registerOverviewTileRoutes } from './modules/overview-tiles/routes.js';
 import { createDrizzleGameRequestRepository } from './modules/game-requests/repository.js';
 import { registerGameRequestRoutes } from './modules/game-requests/routes.js';
 import { createQuotaRequestService } from './modules/quota-requests/index.js';
@@ -1158,6 +1161,21 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     await app.register(
       registerGameTypeImageRoutes({
         service: spielbilder,
+        actorUserId: (request) => request.authUser?.id ?? null,
+      }),
+    );
+
+    /*
+     * Uebersichts-Kacheln ohne Server (Betreiber-Wunsch 26.09.2026): vom
+     * Administrator angelegt, fuer jedes freigeschaltete Konto sichtbar. Das
+     * Spiel wird wie bei den Bildern gegen die Registry geprueft.
+     */
+    await app.register(
+      registerOverviewTileRoutes({
+        service: createOverviewTileService({
+          repository: createDrizzleOverviewTileRepository(db),
+          kennt: (gameTypeId) => spieltypen.find(gameTypeId) !== null,
+        }),
         actorUserId: (request) => request.authUser?.id ?? null,
       }),
     );

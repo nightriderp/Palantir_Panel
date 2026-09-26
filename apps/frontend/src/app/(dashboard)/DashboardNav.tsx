@@ -155,6 +155,15 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canManageInstance',
   },
   {
+    // Übersichts-Kacheln ohne Server (Betreiber-Wunsch 26.09.2026) – Teil des
+    // Erscheinungsbilds der Instanz, deshalb `instance.manage` wie die Schriften.
+    key: 'admin-kacheln',
+    label: 'Kacheln',
+    icon: 'grid',
+    href: '/admin/kacheln',
+    requires: 'canManageInstance',
+  },
+  {
     key: 'admin-sticker',
     label: 'Sticker',
     icon: 'smile',
