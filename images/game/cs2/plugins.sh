@@ -143,7 +143,9 @@ plugin_zurueckholen() {
 plugins_gewuenscht() {
   gewuenscht=''
 
-  if [ "${CS2_PLUGIN_SIMPLEADMIN:-}" = true ]; then
+  # SimpleAdmin läuft immer mit den Plugins (Betreiber 26.09.2026); nur ein
+  # ausdrückliches `false` lässt es weg.
+  if [ "${CS2_PLUGIN_SIMPLEADMIN:-true}" != false ]; then
     gewuenscht="${gewuenscht} simpleadmin anybaselib playersettings menumanager"
 
     # Admins verstecken – nur mit SimpleAdmin, das Modul hängt an dessen API.

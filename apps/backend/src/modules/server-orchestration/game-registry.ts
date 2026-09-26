@@ -3456,7 +3456,6 @@ const CS2_PROFILE: GamePreset[] = [
       'Üben und Waffen ansehen: keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera, keine Bots.',
     values: {
       gameMode: 'competitive',
-      modePlugin: 'none',
       bots: 0,
       skipWarmup: true,
       noFreezeTime: true,
@@ -3475,7 +3474,6 @@ const CS2_PROFILE: GamePreset[] = [
     values: {
       ...TRAINING_AUS,
       gameMode: 'deathmatch',
-      modePlugin: 'none',
       bots: 10,
       infiniteAmmo: true,
     },
@@ -3486,9 +3484,7 @@ const CS2_PROFILE: GamePreset[] = [
     description: 'Retakes-Runden mit Plugin; Bots füllt Retakes selbst auf.',
     values: {
       ...TRAINING_AUS,
-      gameMode: 'competitive',
-      plugins: true,
-      modePlugin: 'retakes',
+      gameMode: 'retakes',
     },
   },
   {
@@ -3497,9 +3493,7 @@ const CS2_PROFILE: GamePreset[] = [
     description: 'Competitive mit MatchZy, alle Runden, keine Bots.',
     values: {
       ...TRAINING_AUS,
-      gameMode: 'competitive',
-      plugins: true,
-      modePlugin: 'matchzy',
+      gameMode: 'matchzy',
       allRounds: true,
       bots: 0,
     },
@@ -3511,7 +3505,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.36',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.37',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3636,10 +3630,23 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Spielmodus',
       type: 'select',
       defaultValue: 'competitive',
+      // Seit 26.09.2026 (Betreiber) mit den Spielmodus-Plugins: MatchZy
+      // (Competitive, Wingman) und Retakes sind Modi wie die von Valve – das
+      // Image lädt das passende Plugin, das Feld „Spielmodus-Plugin“ entfällt.
       description:
-        'Competitive 5 gegen 5, Casual, Wingman 2 gegen 2, Deathmatch, Arms Race oder Custom (ohne Modus-Regeln, fürs Training).',
+        'Competitive 5 gegen 5, Casual, Wingman 2 gegen 2, Deathmatch, Arms Race, Custom (ohne Modus-Regeln, fürs Training). MatchZy: Warmup bis alle !ready tippen, Messerrunde, Pausen. Retakes: Die Bombe liegt, ein Team verteidigt.',
       required: false,
-      options: ['competitive', 'casual', 'wingman', 'deathmatch', 'armsrace', 'custom'],
+      options: [
+        'competitive',
+        'casual',
+        'wingman',
+        'deathmatch',
+        'armsrace',
+        'custom',
+        'matchzy',
+        'matchzy_wingman',
+        'retakes',
+      ],
       optionLabels: {
         competitive: 'Competitive (5 gegen 5)',
         casual: 'Casual',
@@ -3647,6 +3654,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
         deathmatch: 'Deathmatch',
         armsrace: 'Arms Race',
         custom: 'Custom (eigene Regeln)',
+        matchzy: 'MatchZy – Competitive (Turniere, Scrims)',
+        matchzy_wingman: 'MatchZy – Wingman (2 gegen 2)',
+        retakes: 'Retakes',
       },
       min: null,
       max: null,
@@ -3818,14 +3828,20 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       lockedAfterCreate: false,
     },
     {
-      // Schritt 7: MetaMod:Source + CounterStrikeSharp. Vorgabe aus – nach einem
-      // CS2-Update, das MetaMod bricht, bleibt der Server so startbar.
-      key: 'plugins',
-      label: 'MetaMod + CounterStrikeSharp',
+      /*
+       * **Notschalter** (Betreiber 26.09.2026): MetaMod, CounterStrikeSharp und
+       * SimpleAdmin laufen immer. Nur wenn ein CS2-Update sie bricht und der
+       * Server nicht mehr startet, schaltet man hier alles ab. Neue Kennung
+       * statt `plugins`: Gespeichert hatten Server dort „aus“ – beim Start gehen
+       * nur gespeicherte Werte ans Image, sie blieben sonst ohne Plugins. Fehlt
+       * `CS2_PLUGINS_AUS`, lädt das Image die Plugins.
+       */
+      key: 'pluginsOff',
+      label: 'Notschalter: Plugins aus',
       type: 'toggle',
       defaultValue: false,
       description:
-        'Grundlage für Plugins. Der erste Start damit lädt gut 50 MB nach. Startet der Server nach einem CS2-Update nicht mehr, hier ausschalten.',
+        'MetaMod, CounterStrikeSharp und alle Plugins (SimpleAdmin, MatchZy, Retakes) abschalten. Nur, wenn der Server nach einem CS2-Update nicht mehr startet – MatchZy und Retakes laufen dann als normales Competitive.',
       required: false,
       options: [],
       min: null,
@@ -3840,22 +3856,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       type: 'text',
       defaultValue: '',
       description:
-        'Steam-IDs mit vollen Admin-Rechten, durch Komma getrennt – 17 Ziffern, beginnend mit 7656119 (z. B. über steamid.io). Gilt nur mit „Plugins laden“. Leer lassen, wer die admins.json von Hand pflegt.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      // Schritt 9. Die Bibliotheken, die es braucht (MenuManager, PlayerSettings,
-      // AnyBaseLib), schaltet das Image mit ein.
-      key: 'pluginSimpleAdmin',
-      label: 'SimpleAdmin',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Bann, Kick, Mute und Admin-Menü im Spiel (!admin). Passt zu jedem Spielmodus-Plugin. Admins kommen aus dem Feld „Admins“.',
+        'Steam-IDs mit vollen Admin-Rechten (SimpleAdmin, MatchZy), durch Komma getrennt – 17 Ziffern, beginnend mit 7656119 (z. B. über steamid.io). Leer lassen, wer die admins.json von Hand pflegt.',
       required: false,
       options: [],
       min: null,
@@ -3870,33 +3871,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       type: 'toggle',
       defaultValue: false,
       description:
-        'Admins landen beim Beitritt unsichtbar bei den Zuschauern und fehlen in status (SimpleAdmin-Stealth). Aus: normal ins Teammenü. !hide schaltet im Spiel um.',
+        'Admins landen beim Beitritt unsichtbar bei den Zuschauern und fehlen in status (SimpleAdmin-Stealth). Aus: normal ins Teammenü. !hide schaltet im Spiel um. Wirkt ab dem nächsten Start.',
       required: false,
       options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      /*
-       * Schritte 10/11, seit 24.09.2026 eine Auswahl statt zweier Schalter
-       * (Fundpunkt 361): MatchZy und Retakes steuern beide Runden und Bots und
-       * dürfen nicht zusammen laufen. Eine Auswahl macht das unmöglich; die
-       * Migration 0050 übernimmt die alten Schalter.
-       */
-      key: 'modePlugin',
-      label: 'Spielmodus-Plugin',
-      type: 'select',
-      defaultValue: 'none',
-      description:
-        'Bestimmt den Spielablauf und verwaltet Runden und Bots selbst – nur eines zur Zeit. MatchZy: Warmup bis alle !ready tippen, Messerrunde, Pausen. Retakes: Die Bombe liegt, ein Team verteidigt.',
-      required: false,
-      options: ['none', 'matchzy', 'retakes'],
-      optionLabels: {
-        none: 'Keins',
-        matchzy: 'MatchZy (Turniere, Scrims)',
-        retakes: 'Retakes',
-      },
       min: null,
       max: null,
       lockedAfterCreate: false,
@@ -3922,11 +3899,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     grenadeCam: 'CS2_GRENADE_CAM',
     buyAnywhere: 'CS2_BUY_ANYWHERE',
     gotv: 'CS2_GOTV',
-    plugins: 'CS2_PLUGINS',
+    pluginsOff: 'CS2_PLUGINS_AUS',
     admins: 'CS2_ADMINS',
-    pluginSimpleAdmin: 'CS2_PLUGIN_SIMPLEADMIN',
     pluginStealth: 'CS2_PLUGIN_STEALTH',
-    modePlugin: 'CS2_MODE_PLUGIN',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
@@ -3948,11 +3923,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'grenadeCam',
     'buyAnywhere',
     'gotv',
-    'plugins',
+    'pluginsOff',
     'admins',
-    'pluginSimpleAdmin',
     'pluginStealth',
-    'modePlugin',
   ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die
@@ -3988,13 +3961,20 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
           ...Object.fromEntries(CS2_KARTEN.map((karte) => [karte, `changelevel ${karte}`])),
           workshop: 'host_workshop_map {workshopMap}',
         },
+        // Jeder Modus schaltet sein Plugin mit (Dateien `palantir_modus_<…>.cfg`
+        // aus dem Image): Valves Modi entladen MatchZy und Retakes, die beiden
+        // laden sich. Der Kartenwechsel danach richtet sie ein. Ohne Plugins
+        // (Notschalter) fehlen die Dateien – `exec` meldet das nur.
         gameMode: {
-          competitive: 'game_type 0; game_mode 1',
-          casual: 'game_type 0; game_mode 0',
-          wingman: 'game_type 0; game_mode 2',
-          deathmatch: 'game_type 1; game_mode 2',
-          armsrace: 'game_type 1; game_mode 0',
-          custom: 'game_type 3; game_mode 0',
+          competitive: 'exec palantir_modus_none; game_type 0; game_mode 1',
+          casual: 'exec palantir_modus_none; game_type 0; game_mode 0',
+          wingman: 'exec palantir_modus_none; game_type 0; game_mode 2',
+          deathmatch: 'exec palantir_modus_none; game_type 1; game_mode 2',
+          armsrace: 'exec palantir_modus_none; game_type 1; game_mode 0',
+          custom: 'exec palantir_modus_none; game_type 3; game_mode 0',
+          matchzy: 'exec palantir_modus_matchzy; game_type 0; game_mode 1',
+          matchzy_wingman: 'exec palantir_modus_matchzy; game_type 0; game_mode 2',
+          retakes: 'exec palantir_modus_retakes; game_type 0; game_mode 1',
         },
       },
       reloadsMap: true,
@@ -4153,90 +4133,6 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
         },
       },
       persist: ['{grenadeCam}'],
-    },
-    {
-      /*
-       * Plugin-Grundlage (24.09.2026). MetaMod hängt sich beim Start in CS2 ein
-       * – deshalb `requiresRestart`: keine Konsolenzeilen, die Oberfläche bietet
-       * „Übernehmen & neu starten“. Als Schalter neben „Alle Runden“
-       * (Betreiber 25.09.2026).
-       */
-      id: 'plugins',
-      label: 'MetaMod',
-      group: 'Plugins',
-      fields: ['plugins'],
-      commands: [],
-      requiresRestart: true,
-    },
-    {
-      /*
-       * **Plugins ohne Neustart** (Betreiber 25.09.2026). CounterStrikeSharp
-       * lädt und entlädt einzelne Plugins im laufenden Betrieb
-       * (`css_plugins load/unload`). Das Image legt beim Start alle Plugins
-       * bereit (nicht gewählte unter `plugins/disabled`) und schreibt je Plugin
-       * eine Datei `palantir_plugin_an_<name>.cfg`/`…_aus_…` mit den Befehlen –
-       * eine Konsolenzeile wäre für fünf Plugin-Pfade zu lang. Nur mit
-       * Grundlage (`commandsWhen`).
-       */
-      id: 'simpleadmin',
-      label: 'SimpleAdmin',
-      group: 'Plugins',
-      fields: ['pluginSimpleAdmin'],
-      commands: ['{pluginSimpleAdmin}'],
-      values: {
-        pluginSimpleAdmin: {
-          true: 'exec palantir_plugin_an_simpleadmin',
-          false: 'exec palantir_plugin_aus_simpleadmin',
-        },
-      },
-      commandsWhen: { field: 'plugins', values: ['true'] },
-    },
-    {
-      // Stealth-Modul (25.09.2026) – hängt an SimpleAdmin; dessen Aus-Datei
-      // entlädt es mit.
-      id: 'stealth',
-      label: 'Admins verstecken',
-      group: 'Plugins',
-      fields: ['pluginStealth'],
-      commands: ['{pluginStealth}'],
-      values: {
-        pluginStealth: {
-          true: 'exec palantir_plugin_an_stealth',
-          false: 'exec palantir_plugin_aus_stealth',
-        },
-      },
-      commandsWhen: { field: 'plugins', values: ['true'] },
-      disabledWhen: {
-        field: 'pluginSimpleAdmin',
-        values: ['false'],
-        hint: 'Nur mit SimpleAdmin.',
-      },
-    },
-    {
-      /*
-       * Spielmodus-Plugin live: altes entladen, neues laden (Dateien
-       * `palantir_modus_<wert>.cfg` aus dem Image), dann die Karte neu laden –
-       * MatchZy und Retakes richten sich beim Kartenstart ein, und danach
-       * gelten unsere Bots und Runden wieder (`gamemode_*_server.cfg`).
-       */
-      id: 'spielmodus-plugin',
-      label: 'Spielmodus-Plugin',
-      group: 'Plugins',
-      fields: ['modePlugin'],
-      commands: ['{modePlugin}', '{map}'],
-      values: {
-        modePlugin: {
-          none: 'exec palantir_modus_none',
-          matchzy: 'exec palantir_modus_matchzy',
-          retakes: 'exec palantir_modus_retakes',
-        },
-        map: {
-          ...Object.fromEntries(CS2_KARTEN.map((karte) => [karte, `changelevel ${karte}`])),
-          workshop: 'host_workshop_map {workshopMap}',
-        },
-      },
-      commandsWhen: { field: 'plugins', values: ['true'] },
-      reloadsMap: true,
     },
   ],
   liveConfigFile: 'server/game/csgo/cfg/palantir_live.cfg',
