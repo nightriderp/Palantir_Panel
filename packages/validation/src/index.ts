@@ -345,6 +345,15 @@ export {
 } from './game-request.js';
 
 export {
+  type CreateUserPresetInput,
+  type UpdateUserPresetInput,
+  type UserPresetQuery,
+  createUserPresetInputSchema,
+  updateUserPresetInputSchema,
+  userPresetQuerySchema,
+} from './user-preset.js';
+
+export {
   type CreateQuotaRequestInput,
   type DecideQuotaRequestInput,
   type QuotaRequestQuery,

@@ -84,6 +84,8 @@ export * from './instance.js';
 export * from './font.js';
 export * from './panel-backup.js';
 export * from './game-request.js';
+// Eigene Profile der Steuerung (Idee P / A2, 26.09.2026).
+export * from './user-preset.js';
 export * from './quota-request.js';
 export * from './registration-request.js';
 
