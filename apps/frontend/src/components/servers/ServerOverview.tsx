@@ -1,6 +1,6 @@
 'use client';
 
-import { type GameTypeDto, type GameServerDto } from '@palantir/contracts';
+import { type GameTypeDto, type GameServerDto, type OverviewTileDto } from '@palantir/contracts';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -9,6 +9,7 @@ import {
   ConfirmDialog,
   EmptyState,
   Icon,
+  OverviewTile,
   PageHeader,
   Panel,
   SegmentedControl,
@@ -19,6 +20,7 @@ import {
 } from '@/components/shared';
 import { openDirectConversation } from '@/lib/api/chat';
 import { errorText } from '@/lib/api/client';
+import { fetchOverviewTiles } from '@/lib/api/overview-tiles';
 import { fetchGameTypes, fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { mergeLiveStatus } from '@/lib/live/mergeLiveStatus';
@@ -92,14 +94,42 @@ export function ServerOverview() {
    */
   const spieltypen = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
   const spielBilder = useMemo(() => {
-    const karte = new Map<string, { iconUrl: string | null; coverImageUrl: string | null }>();
+    const karte = new Map<
+      string,
+      { name: string; iconUrl: string | null; coverImageUrl: string | null }
+    >();
 
     for (const spiel of spieltypen.data ?? []) {
-      karte.set(spiel.id, { iconUrl: spiel.iconUrl, coverImageUrl: spiel.coverImageUrl });
+      karte.set(spiel.id, {
+        name: spiel.name,
+        iconUrl: spiel.iconUrl,
+        coverImageUrl: spiel.coverImageUrl,
+      });
     }
 
     return karte;
   }, [spieltypen.data]);
+
+  /*
+   * Kacheln ohne Server (Betreiber-Wunsch 26.09.2026): vom Administrator
+   * angelegt, fuer alle dieselben. Sie stehen unter „Angepinnt" vor den
+   * angehefteten Servern und folgen nur der Suche - der Online/Offline-Filter
+   * kennt ihren Zustand nicht und laesst sie deshalb weg.
+   */
+  const kacheln = useApiResource<OverviewTileDto[]>((signal) => fetchOverviewTiles(signal), []);
+  const sichtbareKacheln = useMemo(() => {
+    if (filter !== 'all') return [];
+
+    const begriff = search.trim().toLocaleLowerCase('de');
+
+    return (kacheln.data ?? []).filter(
+      (tile) =>
+        begriff === '' ||
+        [tile.title, tile.subtitle, tile.gameLabel, tile.address]
+          .filter((wert): wert is string => wert !== null)
+          .some((wert) => wert.toLocaleLowerCase('de').includes(begriff)),
+    );
+  }, [kacheln.data, filter, search]);
   const { pinnedIds, isPinned, togglePin } = usePinnedServers(servers.data ?? []);
 
   const list = useMemo(() => servers.data ?? [], [servers.data]);
@@ -289,7 +319,10 @@ export function ServerOverview() {
         </Panel>
       ) : null}
 
-      {!servers.loading && !servers.error && grouped.totalCount === 0 ? (
+      {!servers.loading &&
+      !servers.error &&
+      grouped.totalCount === 0 &&
+      sichtbareKacheln.length === 0 ? (
         <EmptyState
           icon="server"
           title={serverLeer.titel}
@@ -304,8 +337,45 @@ export function ServerOverview() {
         />
       ) : null}
 
-      {grouped.totalCount > 0 && grouped.visibleCount === 0 ? (
+      {grouped.totalCount > 0 && grouped.visibleCount === 0 && sichtbareKacheln.length === 0 ? (
         <EmptyState icon="search" title={keinTreffer.titel} description={keinTreffer.text} />
+      ) : null}
+
+      {/*
+        Die Kacheln ohne Server haengen an der Gruppe „Angepinnt". Gibt es
+        keinen angehefteten Server, bekommt sie die Gruppe trotzdem – sonst
+        staenden sie ohne Ueberschrift ueber „Deine Server".
+      */}
+      {sichtbareKacheln.length > 0 && !grouped.groups.some((group) => group.key === 'pinned') ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="flex items-center gap-2 text-2xs uppercase tracking-[0.1em] text-ink-soft">
+            <Icon name="pin" size={12} />
+            Angepinnt
+            <span className="font-mono text-ink-faint">· {sichtbareKacheln.length}</span>
+          </h2>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
+            {sichtbareKacheln.map((tile) => (
+              <OverviewTile
+                key={tile.id}
+                tile={tile}
+                gameIconUrl={
+                  tile.gameTypeId === null
+                    ? null
+                    : (spielBilder.get(tile.gameTypeId)?.iconUrl ?? null)
+                }
+                gameCoverUrl={
+                  tile.gameTypeId === null
+                    ? null
+                    : (spielBilder.get(tile.gameTypeId)?.coverImageUrl ?? null)
+                }
+                gameTypeName={
+                  tile.gameTypeId === null ? null : (spielBilder.get(tile.gameTypeId)?.name ?? null)
+                }
+                onCopyAddress={copyAddress}
+              />
+            ))}
+          </div>
+        </section>
       ) : null}
 
       {grouped.groups.map((group) => (
@@ -313,7 +383,9 @@ export function ServerOverview() {
           <h2 className="flex items-center gap-2 text-2xs uppercase tracking-[0.1em] text-ink-soft">
             {group.key === 'pinned' ? <Icon name="pin" size={12} /> : null}
             {group.title}
-            <span className="font-mono text-ink-faint">· {group.servers.length}</span>
+            <span className="font-mono text-ink-faint">
+              · {group.servers.length + (group.key === 'pinned' ? sichtbareKacheln.length : 0)}
+            </span>
           </h2>
 
           {/*
@@ -324,6 +396,30 @@ export function ServerOverview() {
             auseinandergezogen wurden.
           */}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
+            {group.key === 'pinned'
+              ? sichtbareKacheln.map((tile) => (
+                  <OverviewTile
+                    key={tile.id}
+                    tile={tile}
+                    gameIconUrl={
+                      tile.gameTypeId === null
+                        ? null
+                        : (spielBilder.get(tile.gameTypeId)?.iconUrl ?? null)
+                    }
+                    gameCoverUrl={
+                      tile.gameTypeId === null
+                        ? null
+                        : (spielBilder.get(tile.gameTypeId)?.coverImageUrl ?? null)
+                    }
+                    gameTypeName={
+                      tile.gameTypeId === null
+                        ? null
+                        : (spielBilder.get(tile.gameTypeId)?.name ?? null)
+                    }
+                    onCopyAddress={copyAddress}
+                  />
+                ))
+              : null}
             {group.servers.map((server) => (
               <ServerCard
                 key={server.id}

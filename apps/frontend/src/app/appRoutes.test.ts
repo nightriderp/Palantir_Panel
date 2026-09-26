@@ -113,6 +113,7 @@ const ERWARTETE_ROUTEN = [
   '/admin/audit',
   '/admin/backups',
   '/admin/bilder',
+  '/admin/kacheln',
   '/admin/moderation',
   '/admin/nodes',
   '/admin/notifications',

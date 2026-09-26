@@ -85,6 +85,7 @@ export { ImageCropper, type ImageCropperProps } from './overlays/ImageCropper';
 export { QrCode, type QrCodeProps } from './primitives/QrCode';
 
 export { ServerCard, type ServerCardProps } from './server/ServerCard';
+export { OverviewTile, type OverviewTileProps } from './server/OverviewTile';
 export { ServerStatusPill, type ServerStatusPillProps } from './server/ServerStatusPill';
 export { MetricRing, type MetricRingProps } from './server/MetricRing';
 export {
