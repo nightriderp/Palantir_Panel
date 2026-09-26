@@ -16,7 +16,7 @@
  * Tabelle. Verschwindet ein Spieltyp, bleibt die Kachel ohne Bild stehen.
  */
 
-import { integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 
 export const overviewTiles = pgTable('overview_tiles', {
@@ -34,6 +34,8 @@ export const overviewTiles = pgTable('overview_tiles', {
   linkLabel: text('link_label'),
   /** Reihenfolge in der Übersicht – kleine Zahl zuerst. */
   sortOrder: integer('sort_order').notNull().default(0),
+  /** Ausgeschaltet = nicht in der Übersicht, aber nicht gelöscht. */
+  enabled: boolean('enabled').notNull().default(true),
   /**
    * Wer sie angelegt hat; `null`, wenn das Konto später verschwindet.
    *

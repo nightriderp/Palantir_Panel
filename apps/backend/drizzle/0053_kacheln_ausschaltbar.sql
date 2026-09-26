@@ -1,0 +1,1 @@
+ALTER TABLE "overview_tiles" ADD COLUMN "enabled" boolean DEFAULT true NOT NULL;

@@ -18,6 +18,7 @@ function toRecord(row: typeof overviewTiles.$inferSelect): OverviewTileRecord {
     linkUrl: row.linkUrl,
     linkLabel: row.linkLabel,
     sortOrder: row.sortOrder,
+    enabled: row.enabled,
     createdById: row.createdById,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

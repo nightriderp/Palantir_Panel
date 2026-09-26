@@ -76,6 +76,15 @@ export interface OverviewTileDto extends WithPermissions<OverviewTilePermissions
   linkLabel: string | null;
   /** Reihenfolge in der Übersicht – kleine Zahl zuerst, gleiche Zahl nach Titel. */
   sortOrder: number;
+  /**
+   * Eingeschaltet? (Betreiber-Wunsch 26.09.2026.)
+   *
+   * Ausgeschaltet heißt: nicht in der Übersicht, aber nicht gelöscht – die
+   * Angaben bleiben erhalten, ein Klick holt die Kachel zurück. Wer die
+   * Kacheln verwaltet, bekommt auch die ausgeschalteten geliefert (mit diesem
+   * Feld `false`); alle anderen sehen nur eingeschaltete.
+   */
+  enabled: boolean;
   createdAt: string;
   updatedAt: string;
 }

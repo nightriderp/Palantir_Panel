@@ -37,6 +37,7 @@ export interface OverviewTileRecord {
   readonly linkUrl: string | null;
   readonly linkLabel: string | null;
   readonly sortOrder: number;
+  readonly enabled: boolean;
   readonly createdById: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -105,6 +106,7 @@ export function toOverviewTileDto(
     linkUrl: record.linkUrl,
     linkLabel: record.linkLabel,
     sortOrder: record.sortOrder,
+    enabled: record.enabled,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     permissions: overviewTilePermissions(actor),
@@ -121,8 +123,16 @@ export function createOverviewTileService(deps: OverviewTileDependencies): Overv
   return {
     async list(actor) {
       const rows = await deps.repository.list();
+      /*
+       * Ausgeschaltete Kacheln bekommt nur, wer sie verwalten darf: Für alle
+       * anderen gibt es sie nicht – sie tauchen weder in der Übersicht noch
+       * in der Antwort auf.
+       */
+      const sichtbar = hasPermission(actor, 'instance.manage')
+        ? rows
+        : rows.filter((row) => row.enabled);
 
-      return rows.map((row) => toOverviewTileDto(row, actor));
+      return sichtbar.map((row) => toOverviewTileDto(row, actor));
     },
 
     async create(actor, actorUserId, input) {
