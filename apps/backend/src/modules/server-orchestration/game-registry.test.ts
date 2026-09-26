@@ -1621,6 +1621,14 @@ describe('Counter-Strike 2', () => {
     }
   });
 
+  it('setzt in jedem Profil außer Aim-Training 0 Bots (Betreiber 26.09.2026)', () => {
+    for (const profil of CS2_GAME_TYPE.presets ?? []) {
+      if (profil.id === 'none') continue;
+
+      expect(profil.values.bots, profil.id).toBe(profil.id === 'aim' ? 10 : 0);
+    }
+  });
+
   it('gibt Profile im DTO weiter', () => {
     const dto = toGameTypeDto(CS2_GAME_TYPE, 3);
 

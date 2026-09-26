@@ -3428,7 +3428,10 @@ const CS2_KARTEN = [
  * nur Panel-Felder; was es einschaltet, kommt über die Training-Schalter und
  * das Spielmodus-Plugin. Nicht genannte Felder bleiben, wie sie sind.
  */
+// Auch keine Bots (Betreiber 26.09.2026): Außer Aim-Training setzt jedes Profil
+// sie auf 0 – sonst blieben etwa die zehn aus dem Aim-Training stehen.
 const TRAINING_AUS = {
+  bots: 0,
   skipWarmup: false,
   noFreezeTime: false,
   instantRespawn: false,
@@ -3481,7 +3484,7 @@ const CS2_PROFILE: GamePreset[] = [
   {
     id: 'retakes',
     label: 'Retakes',
-    description: 'Retakes-Runden mit Plugin; Bots füllt Retakes selbst auf.',
+    description: 'Retakes-Runden mit Plugin, keine Bots.',
     values: {
       ...TRAINING_AUS,
       gameMode: 'retakes',
