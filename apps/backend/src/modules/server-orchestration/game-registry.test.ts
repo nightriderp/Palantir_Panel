@@ -1566,23 +1566,34 @@ describe('Counter-Strike 2', () => {
       'grenadeCam',
       'buyAnywhere',
       'gotv',
-      'plugins',
+      'pluginsOff',
       'admins',
-      'pluginSimpleAdmin',
       'pluginStealth',
-      'modePlugin',
     ]);
   });
 
-  it('führt MatchZy und Retakes als eine Auswahl – beide zusammen gäbe es nicht', () => {
-    const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === 'modePlugin');
+  it('führt MatchZy und Retakes als Spielmodi – ein Feld, beide zusammen gibt es nicht (26.09.2026)', () => {
+    const felder = CS2_GAME_TYPE.configFields.map((f) => f.key);
+    const modus = CS2_GAME_TYPE.configFields.find((f) => f.key === 'gameMode');
 
-    expect(feld?.type).toBe('select');
-    expect(feld?.options).toEqual(['none', 'matchzy', 'retakes']);
-    expect(feld?.defaultValue).toBe('none');
-    for (const wert of feld?.options ?? []) {
-      expect(feld?.optionLabels?.[wert], wert).toBeTruthy();
-    }
+    expect(felder).not.toContain('modePlugin');
+    expect(felder).not.toContain('pluginSimpleAdmin');
+    expect(felder).not.toContain('plugins');
+    expect(modus?.options).toEqual(
+      expect.arrayContaining(['matchzy', 'matchzy_wingman', 'retakes']),
+    );
+  });
+
+  it('führt den Notschalter mit neuer Kennung – gespeichertes „plugins: aus“ bleibt wirkungslos', () => {
+    const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === 'pluginsOff');
+
+    expect(feld?.defaultValue).toBe(false);
+    expect(CS2_GAME_TYPE.envMapping?.pluginsOff).toBe('CS2_PLUGINS_AUS');
+    expect(CS2_GAME_TYPE.envMapping).not.toHaveProperty('plugins');
+    // Kein Schalter in der Steuerung – nur in den Einstellungen, wie GOTV.
+    const liveFelder = (CS2_GAME_TYPE.liveControls ?? []).flatMap((s) => s.fields);
+    expect(liveFelder).not.toContain('pluginsOff');
+    expect(liveFelder).not.toContain('pluginStealth');
   });
 
   it('bietet Profile an – nur mit Feldern, die die Steuerung live setzen kann', () => {
@@ -1649,22 +1660,15 @@ describe('Counter-Strike 2', () => {
     expect(aus).not.toMatch(/mp_respawn_on_death|mp_freezetime/u);
   });
 
-  it('führt das Stealth-Modul als eigenen Schalter – aus, nur mit SimpleAdmin', () => {
+  it('führt das Stealth-Modul als Einstellung – aus', () => {
     const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === 'pluginStealth');
-    const steuerung = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'stealth');
 
     expect(feld?.defaultValue).toBe(false);
     expect(CS2_GAME_TYPE.envMapping?.pluginStealth).toBe('CS2_PLUGIN_STEALTH');
-    expect(steuerung?.disabledWhen).toMatchObject({
-      field: 'pluginSimpleAdmin',
-      values: ['false'],
-    });
-    expect(
-      liveBefehle(CS2_GAME_TYPE, ['pluginStealth'], { plugins: true, pluginStealth: true }),
-    ).toEqual(['exec palantir_plugin_an_stealth']);
+    expect(CS2_GAME_TYPE.restartRequiredFields).toContain('pluginStealth');
   });
 
-  it('ordnet die Steuerung in Spiel, Training und Plugins', () => {
+  it('ordnet die Steuerung in Spiel und Training – Plugins laufen im Hintergrund', () => {
     const gruppe = (name: string) =>
       (CS2_GAME_TYPE.liveControls ?? []).filter((s) => s.group === name).map((s) => s.id);
 
@@ -1680,10 +1684,7 @@ describe('Counter-Strike 2', () => {
       'infiniteAmmo',
       'grenadeCam',
     ]);
-    expect(gruppe('Plugins')).toEqual(['plugins', 'simpleadmin', 'stealth', 'spielmodus-plugin']);
-    // Nur MetaMod braucht einen Neustart.
-    const plugins = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'plugins');
-    expect(plugins).toMatchObject({ fields: ['plugins'], commands: [], requiresRestart: true });
+    expect(gruppe('Plugins')).toEqual([]);
   });
 
   it('schaltet Munition mit sv_cheats ein und startet die Runde nur, wo es nötig ist', () => {
@@ -1698,34 +1699,31 @@ describe('Counter-Strike 2', () => {
     expect(liveDatei(CS2_GAME_TYPE, { endlessRound: true })).not.toMatch(/mp_restartgame/u);
   });
 
-  it('schaltet Plugins ohne Neustart – nur mit Grundlage, Spielmodus mit Kartenneustart', () => {
-    const mit = { plugins: true, map: 'de_mirage', workshopMap: 0 };
+  it('schaltet beim Moduswechsel das Plugin mit – und lädt die Karte neu', () => {
+    const werte = { map: 'de_mirage', workshopMap: 0 };
 
-    expect(
-      liveBefehle(CS2_GAME_TYPE, ['pluginSimpleAdmin'], { ...mit, pluginSimpleAdmin: true }),
-    ).toEqual(['exec palantir_plugin_an_simpleadmin']);
-    expect(liveBefehle(CS2_GAME_TYPE, ['modePlugin'], { ...mit, modePlugin: 'retakes' })).toEqual([
-      'exec palantir_modus_retakes',
+    expect(liveBefehle(CS2_GAME_TYPE, ['gameMode'], { ...werte, gameMode: 'retakes' })).toEqual([
+      'exec palantir_modus_retakes; game_type 0; game_mode 1',
       'changelevel de_mirage',
     ]);
     expect(
-      liveBefehle(CS2_GAME_TYPE, ['modePlugin'], {
-        ...mit,
+      liveBefehle(CS2_GAME_TYPE, ['gameMode'], { ...werte, gameMode: 'matchzy_wingman' }),
+    ).toEqual(['exec palantir_modus_matchzy; game_type 0; game_mode 2', 'changelevel de_mirage']);
+    // Valves Modi entladen MatchZy und Retakes.
+    expect(
+      liveBefehle(CS2_GAME_TYPE, ['gameMode'], {
+        ...werte,
         map: 'workshop',
         workshopMap: 42,
-        modePlugin: 'none',
+        gameMode: 'casual',
       }),
-    ).toEqual(['exec palantir_modus_none', 'host_workshop_map 42']);
-    // Ohne Grundlage nur speichern.
-    expect(
-      liveBefehle(CS2_GAME_TYPE, ['modePlugin'], { ...mit, plugins: false, modePlugin: 'matchzy' }),
-    ).toEqual([]);
+    ).toEqual(['exec palantir_modus_none; game_type 0; game_mode 0', 'host_workshop_map 42']);
   });
 
   it('gibt Karten und Spielmodi Anzeigenamen', () => {
     const feld = (key: string) => CS2_GAME_TYPE.configFields.find((f) => f.key === key);
 
-    for (const key of ['map', 'gameMode', 'modePlugin']) {
+    for (const key of ['map', 'gameMode']) {
       for (const wert of feld(key)?.options ?? []) {
         expect(feld(key)?.optionLabels?.[wert], `${key}=${wert}`).toBeTruthy();
       }
@@ -1758,7 +1756,7 @@ describe('Counter-Strike 2', () => {
     });
   });
 
-  it('bietet die neun offiziellen Karten, „workshop“ und sechs Modi an, Bots 0 bis 10', () => {
+  it('bietet die neun offiziellen Karten, „workshop“ und neun Modi an, Bots 0 bis 10', () => {
     const feld = (key: string) => CS2_GAME_TYPE.configFields.find((f) => f.key === key);
 
     expect(feld('map')?.options).toHaveLength(10);
@@ -1771,6 +1769,9 @@ describe('Counter-Strike 2', () => {
       'deathmatch',
       'armsrace',
       'custom',
+      'matchzy',
+      'matchzy_wingman',
+      'retakes',
     ]);
     expect(feld('bots')?.defaultValue).toBe(0);
     expect(feld('bots')?.max).toBe(10);
@@ -1839,10 +1840,6 @@ describe('Counter-Strike 2', () => {
       'allGrenades',
       'infiniteAmmo',
       'grenadeCam',
-      'plugins',
-      'pluginSimpleAdmin',
-      'pluginStealth',
-      'modePlugin',
     ]);
 
     for (const key of felder) {
@@ -1857,7 +1854,9 @@ describe('Counter-Strike 2', () => {
       ?.gameMode;
 
     for (const modus of modi) {
-      expect(uebersetzung?.[modus], modus).toMatch(/^game_type \d; game_mode \d$/u);
+      expect(uebersetzung?.[modus], modus).toMatch(
+        /^exec palantir_modus_(none|matchzy|retakes); game_type \d; game_mode \d$/u,
+      );
     }
   });
 
@@ -1868,7 +1867,7 @@ describe('Counter-Strike 2', () => {
     for (const karte of karten) {
       const befehle = liveBefehle(CS2_GAME_TYPE, ['map'], { ...werte, map: karte });
 
-      expect(befehle[0], karte).toBe('game_type 0; game_mode 0');
+      expect(befehle[0], karte).toBe('exec palantir_modus_none; game_type 0; game_mode 0');
       expect(befehle[1], karte).toBe(
         karte === 'workshop' ? 'host_workshop_map 3070284539' : `changelevel ${karte}`,
       );
@@ -1882,7 +1881,7 @@ describe('Counter-Strike 2', () => {
         gameMode: 'deathmatch',
         workshopMap: 123,
       }),
-    ).toEqual(['game_type 1; game_mode 2', 'host_workshop_map 123']);
+    ).toEqual(['exec palantir_modus_none; game_type 1; game_mode 2', 'host_workshop_map 123']);
   });
 
   it('übersetzt „Alle Runden“ in mp_match_can_clinch und hält es über den Kartenwechsel', () => {

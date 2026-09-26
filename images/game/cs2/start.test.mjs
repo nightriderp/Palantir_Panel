@@ -131,6 +131,11 @@ function starte(ordner, extra = {}) {
       PALANTIR_LIB_DIR: LIB_ORDNER,
       PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
       CS2_SKRIPTE: posix(HIER.replace(/[\\/]$/u, '')),
+      // Seit 26.09.2026 sind Plugins ohne Angabe an – die Tests schalten sie
+      // ausdrücklich zu; ohne liefe jeder Start in den Download. SimpleAdmin
+      // ebenso (ohne Angabe an).
+      CS2_PLUGINS: 'false',
+      CS2_PLUGIN_SIMPLEADMIN: 'false',
       ...extra,
     },
   });
@@ -624,6 +629,54 @@ describe('Dockerfile – Schritt 7', () => {
     assert.match(dockerfile, /apt-get install[^\n]*\blibicu\d+/u);
     // Kein ENV, das den Invariant-Modus einschaltet (der Kommentar darf ihn nennen).
     assert.doesNotMatch(dockerfile, /^ENV[^\n]*GLOBALIZATION_INVARIANT/mu);
+  });
+});
+
+describe('start.sh – Plugins immer an, Modi mit Plugin (26.09.2026)', nurMitShell, () => {
+  const ohneVorgaben = (extra) => {
+    const umgebung = { ...extra };
+    return umgebung;
+  };
+
+  it('lädt ohne Angabe die Plugins – der Notschalter schaltet sie ab', () => {
+    const an = arbeitsordner();
+    const aus = arbeitsordner();
+    const liste = join(an.daten, 'leer.list');
+    mkdirSync(an.daten, { recursive: true });
+    writeFileSync(liste, '');
+
+    const lauf = starte(an, {
+      CS2_PLUGINS: '',
+      ...grundlageAttrappe(an),
+      PALANTIR_CS2_PLUGINLISTE: posix(liste),
+    });
+    const notaus = starte(aus, {
+      CS2_PLUGINS: '',
+      CS2_PLUGINS_AUS: 'true',
+      CS2_METAMOD_URL: 'file:///gibt/es/nicht',
+    });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.match(
+      readFileSync(join(an.daten, 'server', 'game', 'csgo', 'gameinfo.gi'), 'utf8'),
+      /metamod/u,
+    );
+    assert.equal(notaus.status, 0, notaus.stdout + notaus.stderr);
+    assert.equal(starte(arbeitsordner(), ohneVorgaben({ CS2_PLUGINS_AUS: 'ja' })).status, 78);
+  });
+
+  it('führt MatchZy und Retakes als Modi – CS2 läuft darunter als Competitive bzw. Wingman', () => {
+    for (const [modus, typ, nummer] of [
+      ['matchzy', '0', '1'],
+      ['matchzy_wingman', '0', '2'],
+      ['retakes', '0', '1'],
+    ]) {
+      const lauf = starte(arbeitsordner(), { CS2_GAME_MODE: modus });
+
+      assert.equal(lauf.status, 0, `${modus}: ${lauf.stderr}`);
+      assert.equal(nach(lauf.argv, '+game_type'), typ, modus);
+      assert.equal(nach(lauf.argv, '+game_mode'), nummer, modus);
+    }
   });
 });
 
@@ -1218,6 +1271,8 @@ describe('start.sh – Stoppsignal (Schritt 3.1)', nurMitSignalen, () => {
         PALANTIR_DATA_DIR: posix(ordner.daten),
         PALANTIR_LIB_DIR: LIB_ORDNER,
         PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+        // Plugins sind ohne Angabe an (26.09.2026) – sonst ginge es ins Netz.
+        CS2_PLUGINS: 'false',
         TEST_SERVER_WARTET: '1',
       },
     });

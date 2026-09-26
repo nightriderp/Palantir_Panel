@@ -91,7 +91,20 @@ ADDONS="${CSGO}/addons"
 GAMEINFO="${CSGO}/gameinfo.gi"
 MERKDATEI="${ADDONS}/.palantir-grundlage"
 
-case "${CS2_PLUGINS:-false}" in
+# **Notschalter** (Betreiber 26.09.2026): Plugins laufen immer, außer
+# `CS2_PLUGINS_AUS=true`. Das Panel schickt nur noch diesen Wert; fehlt er,
+# bleibt es bei „an“. `CS2_PLUGINS` gilt weiter, wenn es jemand setzt (Tests,
+# Aufrufe von Hand).
+case "${CS2_PLUGINS_AUS:-false}" in
+  true) CS2_PLUGINS=false ;;
+  false) CS2_PLUGINS="${CS2_PLUGINS:-true}" ;;
+  *)
+    palantir_log "Ungueltiger Wert fuer den Notschalter: ${CS2_PLUGINS_AUS}."
+    exit 78
+    ;;
+esac
+
+case "${CS2_PLUGINS}" in
   true) PLUGINS=1 ;;
   false) PLUGINS=0 ;;
   *)
@@ -100,8 +113,24 @@ case "${CS2_PLUGINS:-false}" in
     ;;
 esac
 
-# Spielmodus-Plugin (Auswahl im Panel, Fundpunkt 361): keins, MatchZy oder
-# Retakes – nie zwei. Etwas anderes ist ein Fehler, kein stilles „keins".
+# **Spielmodus mit Plugin** (Betreiber 26.09.2026): MatchZy und Retakes stehen
+# in der Modus-Auswahl. Das Plugin ergibt sich aus dem Modus, CS2 selbst läuft
+# darunter als Competitive bzw. Wingman.
+CS2_GAME_MODE="${CS2_GAME_MODE:-competitive}"
+CS2_MODE_PLUGIN="${CS2_MODE_PLUGIN:-none}"
+case "$CS2_GAME_MODE" in
+  matchzy) CS2_MODE_PLUGIN=matchzy; CS2_GAME_MODE=competitive ;;
+  matchzy_wingman) CS2_MODE_PLUGIN=matchzy; CS2_GAME_MODE=wingman ;;
+  retakes) CS2_MODE_PLUGIN=retakes; CS2_GAME_MODE=competitive ;;
+esac
+export CS2_GAME_MODE CS2_MODE_PLUGIN
+
+if [ "$PLUGINS" = 0 ] && [ "$CS2_MODE_PLUGIN" != none ]; then
+  palantir_log "Hinweis: ${CS2_MODE_PLUGIN} braucht die Plugins (Notschalter an) - der Server laeuft als ${CS2_GAME_MODE}."
+fi
+
+# Spielmodus-Plugin: keins, MatchZy oder Retakes – nie zwei (Fundpunkt 361).
+# Etwas anderes ist ein Fehler, kein stilles „keins".
 case "${CS2_MODE_PLUGIN:-none}" in
   none | matchzy | retakes) ;;
   *)
