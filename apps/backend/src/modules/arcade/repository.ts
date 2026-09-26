@@ -140,16 +140,15 @@ function wertAggregat(metric: ArcadeMetric) {
 }
 
 /**
- * Grundmenge jeder Wertung: nur nachgerechnete Einträge des Spiels.
+ * Grundmenge jeder Wertung: alle Einträge des Spiels.
  *
- * Die Einträge vor dem Neubau (26.09.2026) kamen ungeprüft aus dem Browser und
- * entstanden mit anderer Spiellogik und anderer Punktevergabe – neben
- * nachgerechneten Ständen wären sie weder vergleichbar noch vertrauenswürdig.
- * Sie bleiben gespeichert (Erfolge zählen sie weiter), die Bestenliste beginnt
- * aber neu.
+ * Bewusst **ohne** Filter auf `verified` (Betreiber-Wunsch 26.09.2026): Die
+ * Einträge vor dem Neubau kamen ungeprüft aus dem Browser und entstanden mit
+ * anderer Spiellogik, sollen aber in der Bestenliste bleiben. Neue Einträge
+ * sind ohnehin nachgerechnet; `verified` hält nur fest, woher ein Eintrag stammt.
  */
 function nurGewertet(gameId: ArcadeGameId) {
-  return and(eq(arcadeScores.gameId, gameId), eq(arcadeScores.verified, true));
+  return eq(arcadeScores.gameId, gameId);
 }
 
 /** `timestamptz` aus einem rohen `sql`-Ausdruck kommt je nach Treiber als Text. */
